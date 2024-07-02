@@ -155,7 +155,9 @@ public:
 		return backups;
 	}
 	static Result<> create(std::filesystem::path const& backupsDir) {
-		auto time = std::chrono::system_clock::now();
+		auto time = std::chrono::time_point_cast<Time::duration>(
+			std::chrono::system_clock::now()
+		);
 		std::string dirname;
 		try {
 			// fmt::format uses exceptions :sob:
