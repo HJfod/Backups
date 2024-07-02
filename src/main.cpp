@@ -132,7 +132,9 @@ private:
 		// Fix corrupt metadata
 		else {
 			std::error_code ec;
-			auto time = std::filesystem::last_write_time(path, ec) - std::chrono::file_clock::now() + Clock::now();
+			auto time = std::chrono::time_point_cast<Time::duration>(
+				std::filesystem::last_write_time(path, ec) - std::chrono::file_clock::now() + Clock::now()
+			);
 			(void)file::writeToJson(path / "metadata.json", BackupMetadata(time));
 		}
 		this->autorelease();
@@ -155,9 +157,7 @@ public:
 		return backups;
 	}
 	static Result<> create(std::filesystem::path const& backupsDir) {
-		auto time = std::chrono::time_point_cast<Time::duration>(
-			std::chrono::system_clock::now()
-		);
+		auto time = std::chrono::system_clock::now();
 		std::string dirname;
 		try {
 			// fmt::format uses exceptions :sob:
