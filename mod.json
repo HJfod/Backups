@@ -1,0 +1,29 @@
+{
+	"geode": "3.2.0",
+	"gd": {
+		"win": "2.206",
+		"android": "2.206",
+		"mac": "2.206",
+		"ios": "2.206"
+	},
+	"id": "hjfod.backups",
+	"name": "Backups",
+	"version": "v1.0.0",
+	"developer": "HJfod",
+	"description": "Never lose your progress again!",
+	"resources": {
+		"spritesheets": {
+			"BackupSheet": ["resources/*.png"]
+		}
+	},
+	"settings": {
+		"auto-local-backup-rate": {
+			"type": "string",
+			"default": "Daily",
+			"one-of": ["Every Startup", "Daily", "Every Other Day", "Weekly", "Never"],
+			"name": "Auto Backup Rate",
+			"description": "How often a <cp>local backup</c> should be made. Only checked when the game is open"
+		}
+	},
+	"tags": ["offline", "universal"]
+}
