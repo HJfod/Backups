@@ -193,7 +193,9 @@ public:
 
 		// Try to infer backup creation date from folder write time
 		std::error_code ec;
-		auto time = std::filesystem::last_write_time(existingDir, ec) - std::chrono::file_clock::now() + Clock::now();
+		auto time = std::chrono::time_point_cast<Time::duration>(
+			std::filesystem::last_write_time(existingDir, ec) - std::chrono::file_clock::now() + Clock::now()
+		);
 
 		std::string dirname;
 		try {
