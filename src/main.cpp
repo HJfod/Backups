@@ -1,4 +1,6 @@
 #include <Geode/modify/MenuLayer.hpp>
+#include <Geode/modify/AccountLayer.hpp>
+#include <Geode/modify/OptionsLayer.hpp>
 #include <Geode/modify/AppDelegate.hpp>
 #include <chrono>
 #include <filesystem>
@@ -624,22 +626,46 @@ static std::chrono::hours backupRateToHours(std::string const& rate) {
 	}
 }
 
-class $modify(MyMenuLayer, MenuLayer) {
+class FollowInAnotherParent : public CCAction {
+protected:
+	Ref<CCNode> m_toFollow;
+	CCPoint m_offset;
+
+public:
+	static FollowInAnotherParent* create(CCNode* target, CCPoint const& offset) {
+		auto ret = new FollowInAnotherParent();
+		ret->m_toFollow = target;
+		ret->m_offset = offset;
+		ret->autorelease();
+		return ret;
+	}
+	void step(float) override {
+		auto worldPos = m_toFollow->getParent() ? 
+			m_toFollow->getParent()->convertToWorldSpace(m_toFollow->getPosition()) : 
+			m_toFollow->getPosition();
+		auto backToPos = m_pTarget->getParent() ? 
+			m_pTarget->getParent()->convertToNodeSpace(worldPos) : 
+			worldPos;
+		m_pTarget->setPosition(backToPos + m_offset);
+	}
+};
+
+class $modify(MenuLayer) {
 	bool init() {
 		if (!MenuLayer::init()) {
 			return false;
 		}
 
-		if (auto menu = this->querySelector("profile-menu")) {
-			auto spr = CircleButtonSprite::createWithSpriteFrameName(
-				"backups.png"_spr, .9f, CircleBaseColor::Pink, CircleBaseSize::SmallAlt
-			);
-			spr->setTopOffset({ 1, 1 });
-			auto btn = CCMenuItemSpriteExtra::create(
-				spr, this, menu_selector(MyMenuLayer::onBackups)
-			);
-			menu->addChild(btn);
-			menu->updateLayout();
+		if (!Mod::get()->setSavedValue("shown-where-new-menu-is-in-menulayer", true)) {
+			if (auto btn = this->querySelector("bottom-menu settings-button")) {
+				auto worldPos = btn->getParent()->convertToWorldSpace(btn->getPosition());
+				auto info = CCSprite::createWithSpriteFrameName("moved.png"_spr);
+				info->setID("backups-moved-info"_spr);
+				info->setZOrder(50);
+				info->setAnchorPoint({ .5f, 0 });
+				info->runAction(FollowInAnotherParent::create(btn, ccp(23, 25)));
+				this->addChild(info);
+			}
 		}
 
 		auto backupRate = Mod::get()->template getSettingValue<std::string>("auto-local-backup-rate");
@@ -667,13 +693,65 @@ class $modify(MyMenuLayer, MenuLayer) {
 
 		return true;
 	}
+};
+class $modify(OptionsLayer) {
+	void customSetup() {
+		OptionsLayer::customSetup();
+
+		if (!Mod::get()->setSavedValue("shown-where-new-menu-is-in-optionslayer", true)) {
+			if (auto btn = this->querySelector("options-menu account-button")) {
+				auto worldPos = btn->getParent()->convertToWorldSpace(btn->getPosition());
+				auto info = CCSprite::createWithSpriteFrameName("moved-2.png"_spr);
+				info->setID("backups-moved-info"_spr);
+				info->setZOrder(50);
+				info->setAnchorPoint({ 1, .5f });
+				info->setRotation(-5);
+				info->runAction(FollowInAnotherParent::create(btn, ccp(-75, 10)));
+				m_mainLayer->addChild(info);
+			}
+		}
+	}
+};
+class $modify(MyAccountLayer, AccountLayer) {
+	void customSetup() {
+		AccountLayer::customSetup();
+
+		auto menu = CCMenu::create();
+		menu->setID("backups-menu"_spr);
+		menu->setContentHeight(120);
+		menu->setAnchorPoint({ .5f, 0 });
+
+		auto spr = CircleButtonSprite::createWithSpriteFrameName(
+			"backups.png"_spr, .9f, CircleBaseColor::Pink, CircleBaseSize::Medium
+		);
+		spr->setTopOffset({ 1, 1 });
+		auto btn = CCMenuItemSpriteExtra::create(
+			spr, this, menu_selector(MyAccountLayer::onBackups)
+		);
+		btn->setID("view-backups-btn"_spr);
+		menu->addChild(btn);
+
+		menu->setLayout(ColumnLayout::create()->setAxisAlignment(AxisAlignment::Start));
+		m_mainLayer->addChildAtPosition(menu, Anchor::BottomLeft, ccp(100, 20), false);
+
+		if (!Mod::get()->setSavedValue("shown-where-new-menu-is-in-accountlayer", true)) {
+			auto worldPos = btn->getParent()->convertToWorldSpace(btn->getPosition());
+			auto info = CCSprite::createWithSpriteFrameName("moved-3.png"_spr);
+			info->setID("backups-moved-info"_spr);
+			info->setZOrder(50);
+			info->setAnchorPoint({ .5f, .5f });
+			info->setRotation(10);
+			info->runAction(FollowInAnotherParent::create(btn, ccp(30, 40)));
+			m_mainLayer->addChild(info);
+		}
+	}
 	void onBackups(CCObject*) {
 		// Opening the popup may take a while as non-cached backup info has to be loaded
 		auto waitLabel = CCLabelBMFont::create("Loading Backups...", "bigFont.fnt");
 		this->addChildAtPosition(waitLabel, Anchor::Center, ccp(0, 0), false);
 		waitLabel->runAction(CCSequence::create(
 			CCDelayTime::create(0),
-			CCCallFunc::create(this, callfunc_selector(MyMenuLayer::onBackups2)),
+			CCCallFunc::create(this, callfunc_selector(MyAccountLayer::onBackups2)),
 			CCRemoveSelf::create(),
 			nullptr
 		));
