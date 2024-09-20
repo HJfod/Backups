@@ -622,6 +622,7 @@ static std::chrono::hours backupRateToHours(std::string const& rate) {
 		// Because people don't open their PC exactly every 24 hours
 		case hash("Daily"): default: return std::chrono::hours(12);
 		case hash("Every Other Day"): return std::chrono::hours(36);
+		case hash("Every Three Days"): return std::chrono::hours(50);
 		case hash("Weekly"): return std::chrono::hours(24 * 7);
 	}
 }

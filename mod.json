@@ -1,5 +1,5 @@
 {
-	"geode": "3.1.1",
+	"geode": "3.7.1",
 	"gd": {
 		"win": "2.206",
 		"android": "2.206",
@@ -8,7 +8,7 @@
 	},
 	"id": "hjfod.backups",
 	"name": "Backups",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"developer": "HJfod",
 	"description": "Never lose your progress again!",
 	"resources": {
@@ -20,7 +20,7 @@
 		"auto-local-backup-rate": {
 			"type": "string",
 			"default": "Daily",
-			"one-of": ["Every Startup", "Daily", "Every Other Day", "Weekly", "Never"],
+			"one-of": ["Every Startup", "Daily", "Every Other Day", "Every Three Days", "Weekly", "Never"],
 			"name": "Auto Backup Rate",
 			"description": "How often a <cp>local backup</c> should be made. Only checked when the game is open"
 		}
