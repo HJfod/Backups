@@ -45,28 +45,22 @@ struct BackupMetadata final {
 
 template <>
 struct matjson::Serialize<BackupMetadata> {
-    static matjson::Value to_json(BackupMetadata const& info) {
-		return matjson::Object({
+    static matjson::Value toJson(BackupMetadata const& info) {
+		return matjson::makeObject({
 			{ "name", info.name },
 			{ "user", info.user },
 			{ "time", std::chrono::duration_cast<std::chrono::hours>(info.time.time_since_epoch()).count() },
 		});
 	}
-    static BackupMetadata from_json(matjson::Value const& value) {
+    static Result<BackupMetadata> fromJson(matjson::Value const& value) {
 		auto info = BackupMetadata();
-		auto obj = value.as_object();
-		if (!obj["name"].is_null()) {
-			info.name = obj["name"].as_string();
-		}
-		info.user = obj["user"].as_string();
-		info.time = Time(std::chrono::hours(obj["time"].as_int()));
-		return info;
-	}
-	static bool is_json(matjson::Value const& value) {
-		if (!value.is_object()) {
-			return false;
-		}
-		return true;
+		auto json = checkJson(value, "BackupMetadata");
+		json.has("name").into(info.name);
+		json.needs("user").into(info.user);
+		int time;
+		json.needs("time").into(time);
+		info.time = Time(std::chrono::hours(time));
+		return json.ok(info);
 	}
 };
 
@@ -82,8 +76,8 @@ struct BackupInfo final {
 
 template <>
 struct matjson::Serialize<BackupInfo> {
-    static matjson::Value to_json(BackupInfo const& info) {
-		return matjson::Object({
+    static matjson::Value toJson(BackupInfo const& info) {
+		return matjson::makeObject({
 			{ "version", BACKUPINFO_CACHE_VERSION },
 			{ "playerIcon", info.playerIcon },
 			{ "playerColor1", info.playerColor1 },
@@ -93,24 +87,16 @@ struct matjson::Serialize<BackupInfo> {
 			{ "levelCount", info.levelCount },
 		});
 	}
-    static BackupInfo from_json(matjson::Value const& value) {
+    static Result<BackupInfo> fromJson(matjson::Value const& value) {
 		auto info = BackupInfo();
-		auto obj = value.as_object();
-		info.playerIcon = obj["playerIcon"].as_int();
-		info.playerColor1 = obj["playerColor1"].as_int();
-		info.playerColor2 = obj["playerColor2"].as_int();
-		if (!obj["playerGlow"].is_null()) {
-			info.playerGlow = obj["playerGlow"].as_int();
-		}
-		info.starCount = obj["starCount"].as_int();
-		info.levelCount = obj["levelCount"].as_int();
-		return info;
-	}
-	static bool is_json(matjson::Value const& value) {
-		if (!value.is_object()) {
-			return false;
-		}
-		return value["version"].as_int() == BACKUPINFO_CACHE_VERSION;
+		auto json = checkJson(value, "BackupInfo");
+		json.needs("playerIcon").into(info.playerIcon);
+		json.needs("playerColor1").into(info.playerColor1);
+		json.needs("playerColor2").into(info.playerColor2);
+		json.has("playerGlow").into(info.playerGlow);
+		json.needs("starCount").into(info.starCount);
+		json.needs("levelCount").into(info.levelCount);
+		return json.ok(info);
 	}
 };
 
