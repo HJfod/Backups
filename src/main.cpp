@@ -2,6 +2,15 @@
 #include <Geode/modify/AccountLayer.hpp>
 #include <Geode/modify/OptionsLayer.hpp>
 #include <Geode/modify/AppDelegate.hpp>
+#include <Geode/binding/GameManager.hpp>
+#include <Geode/binding/ButtonSprite.hpp>
+#include <Geode/binding/SimplePlayer.hpp>
+#include <Geode/binding/GJAccountManager.hpp>
+#include <Geode/loader/Dirs.hpp>
+#include <Geode/ui/Popup.hpp>
+#include <Geode/ui/ScrollLayer.hpp>
+#include <Geode/ui/Notification.hpp>
+#include <Geode/ui/BasedButtonSprite.hpp>
 #include <chrono>
 #include <filesystem>
 #include <fmt/chrono.h>
@@ -112,6 +121,7 @@ class Backup final : public CCObject {
 private:
 	std::filesystem::path m_path;
 	BackupMetadata m_meta;
+	bool m_autoRemove = false;
 
 	Backup(std::filesystem::path const& path) : m_path(path) {
 		if (auto meta = file::readFromJson<BackupMetadata>(path / "metadata.json")) {
@@ -125,6 +135,7 @@ private:
 			);
 			(void)file::writeToJson(path / "metadata.json", BackupMetadata(time));
 		}
+		m_autoRemove = std::filesystem::exists(path / "auto-remove.txt");
 		this->autorelease();
 	}
 
@@ -144,7 +155,22 @@ public:
 		});
 		return backups;
 	}
-	static Result<> create(std::filesystem::path const& backupsDir) {
+	static Result<> cleanupAutomated(std::filesystem::path const& dir) {
+		auto backups = Backup::get(dir);
+		int64_t limit = Mod::get()->getSettingValue<int64_t>("auto-backup-cleanup-limit");
+		for (auto backup : backups) {
+			if (backup->isAutoRemove()) {
+				if (limit > 0) {
+					limit -= 1;
+				}
+				else {
+					GEODE_UNWRAP(backup->deleteBackup());
+				}
+			}
+		}
+		return Ok();
+	}
+	static Result<> create(std::filesystem::path const& backupsDir, bool autoRemove) {
 		auto time = std::chrono::system_clock::now();
 		std::string dirname;
 		try {
@@ -175,6 +201,14 @@ public:
 
 		// Save metadata
 		GEODE_UNWRAP(file::writeToJson(dir / "metadata.json", BackupMetadata(time)));
+
+		if (autoRemove) {
+			// Not a big deal if this fails
+			(void)file::writeString(dir / "auto-remove.txt", fmt::format(
+				"This backup will be removed when your set auto backup limit of {} is reached.\n\nIf you'd like to preserve this backup, delete this text file.",
+				Mod::get()->getSettingValue<int64_t>("auto-backup-cleanup-limit")
+			));
+		}
 
 		return Ok();
 	}
@@ -256,6 +290,9 @@ public:
 	}
 	bool hasGameManager() const {
 		return std::filesystem::exists(m_path / "CCGameManager.dat");
+	}
+	bool isAutoRemove() const {
+		return m_autoRemove;
 	}
 	BackupInfo loadInfo() const {
 		// Cache info because loading this takes forevah
@@ -518,7 +555,7 @@ protected:
 	}
 	void onNew(CCObject*) {
 		// Create new backup
-		auto res = Backup::create(m_dir);
+		auto res = Backup::create(m_dir, false);
 		if (res) {
 			FLAlertLayer::create("Backed Up", "Backup has been created.", "OK")->show();
 		}
@@ -543,7 +580,7 @@ protected:
 			[list = Ref(this), backup = Ref(backup), toggle](auto, bool btn2) {
 				if (btn2) {
 					if (toggle->isToggled()) {
-						auto newRes = Backup::create(backup->getPath());
+						auto newRes = Backup::create(backup->getPath(), false);
 						if (!newRes) {
 							return FLAlertLayer::create("Unable to Backup", newRes.unwrapErr(), "OK")->show();
 						}
@@ -637,7 +674,33 @@ public:
 	}
 };
 
+class SaveToCloudPopup : public Popup<>, public GJAccountBackupDelegate {
+protected:
+	bool setup() override {
+		this->setTitle("Saving to Cloud...");
+		GJAccountManager::get()->m_backupDelegate = this;
+		// if (!GJAccountManager::get()->getAccountBackupURL()) {
+		// }
+		return true;
+	}
+
+public:
+	static SaveToCloudPopup* create() {
+		auto ret = new SaveToCloudPopup();
+		if (ret && ret->initAnchored(250, 200, "square01_001.png")) {
+			ret->autorelease();
+			return ret;
+		}
+		CC_SAFE_DELETE(ret);
+		return nullptr;
+	}
+};
+
 class $modify(MenuLayer) {
+	struct Fields {
+		bool doQuitGame = false;
+	};
+
 	bool init() {
 		if (!MenuLayer::init()) {
 			return false;
@@ -667,8 +730,11 @@ class $modify(MenuLayer) {
 			return true;
 		}
 
+		// Try cleaning up automated backups. If this fails, not a big deal honestly
+		(void)Backup::cleanupAutomated(dir);
+
 		// Create new backup
-		auto res = Backup::create(dir);
+		auto res = Backup::create(dir, true);
 		if (res) {
 			log::info("Backed up CCGameManager & CCLocalLevels");
 			Notification::create("Save Data has been Backed Up!", NotificationIcon::Success)->show();
@@ -679,6 +745,29 @@ class $modify(MenuLayer) {
 		}
 
 		return true;
+	}
+
+	void onQuit(CCObject* sender) {
+		log::info("blah");
+		if (m_fields->doQuitGame) {
+			MenuLayer::onQuit(sender);
+		}
+		else {
+			createQuickPopup(
+				"Save to Cloud",
+				"Do you want to <cy>Save your Progress to the Cloud</c> before quitting?",
+				"Just Quit", "Save First",
+				[this](auto, bool btn2) {
+					m_fields->doQuitGame = true;
+					if (!btn2) {
+						this->onQuit(nullptr);
+					}
+					else {
+						SaveToCloudPopup::create()->show();
+					}
+				}
+			);
+		}
 	}
 };
 class $modify(OptionsLayer) {
