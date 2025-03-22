@@ -11,9 +11,12 @@
 #include <Geode/ui/ScrollLayer.hpp>
 #include <Geode/ui/Notification.hpp>
 #include <Geode/ui/BasedButtonSprite.hpp>
+#include <Geode/ui/LoadingSpinner.hpp>
+#include <Geode/cocos/robtop/xml/pugixml.hpp>
 #include <chrono>
 #include <filesystem>
 #include <fmt/chrono.h>
+#include "ParseCC.hpp"
 
 using namespace geode::prelude;
 
@@ -73,40 +76,13 @@ struct matjson::Serialize<BackupMetadata> {
 	}
 };
 
-static constexpr size_t BACKUPINFO_CACHE_VERSION = 1;
 struct BackupInfo final {
 	int playerIcon = 0;
 	int playerColor1 = 0;
 	int playerColor2 = 0;
 	std::optional<int> playerGlow = 0;
-	size_t starCount = 0;
+	int starCount = 0;
 	size_t levelCount = 0;
-};
-
-template <>
-struct matjson::Serialize<BackupInfo> {
-    static matjson::Value toJson(BackupInfo const& info) {
-		return matjson::makeObject({
-			{ "version", BACKUPINFO_CACHE_VERSION },
-			{ "playerIcon", info.playerIcon },
-			{ "playerColor1", info.playerColor1 },
-			{ "playerColor2", info.playerColor2 },
-			{ "playerGlow", info.playerGlow },
-			{ "starCount", info.starCount },
-			{ "levelCount", info.levelCount },
-		});
-	}
-    static Result<BackupInfo> fromJson(matjson::Value const& value) {
-		auto info = BackupInfo();
-		auto json = checkJson(value, "BackupInfo");
-		json.needs("playerIcon").into(info.playerIcon);
-		json.needs("playerColor1").into(info.playerColor1);
-		json.needs("playerColor2").into(info.playerColor2);
-		json.has("playerGlow").into(info.playerGlow);
-		json.needs("starCount").into(info.starCount);
-		json.needs("levelCount").into(info.levelCount);
-		return json.ok(info);
-	}
 };
 
 static bool DO_NOT_SAVE_GAME = false;
@@ -122,6 +98,7 @@ private:
 	std::filesystem::path m_path;
 	BackupMetadata m_meta;
 	bool m_autoRemove = false;
+	std::optional<Task<BackupInfo>> m_infoTask;
 
 	Backup(std::filesystem::path const& path) : m_path(path) {
 		if (auto meta = file::readFromJson<BackupMetadata>(path / "metadata.json")) {
@@ -294,49 +271,84 @@ public:
 	bool isAutoRemove() const {
 		return m_autoRemove;
 	}
-	BackupInfo loadInfo() const {
+	Task<BackupInfo> loadInfo() {
 		// Cache info because loading this takes forevah
-		if (auto cached = file::readFromJson<BackupInfo>(m_path / "info-cache.json")) {
-			return *cached;
+		if (m_infoTask) {
+			return *m_infoTask;
 		}
-		// If loading the cache fails for whatever reason (doesn't exist, 
-		// invalid json, outdated format), then reload info
+		m_infoTask.emplace(Task<BackupInfo>::run([path = m_path](auto, auto) -> Task<BackupInfo>::Result {
+			auto info = BackupInfo();
 
-		// Otherwise load from the CC files
-		auto info = BackupInfo();
+			auto ccgmData = cc::parseCompressedCCFile(path / "CCGameManager.dat").unwrapOrDefault();
+			pugi::xml_document ccgm;
+			if (ccgm.load_buffer(ccgmData.data(), ccgmData.size())) {
+				if (auto find = ccgm.select_single_node("//k[text()=\"GS_Value\"]/following-sibling::d/k[text()=\"6\"]/following-sibling::s")) {
+					info.starCount = numFromString<int>(find.node().value()).unwrapOrDefault();
+				}
+				if (auto find = ccgm.select_single_node("//k[text()=\"playerFrame\"]/following-sibling::i")) {
+					info.playerIcon = numFromString<int>(find.node().value()).unwrapOrDefault();
+				}
+				if (auto find = ccgm.select_single_node("//k[text()=\"playerColor\"]/following-sibling::i")) {
+					info.playerColor1 = numFromString<int>(find.node().value()).unwrapOrDefault();
+				}
+				if (auto find = ccgm.select_single_node("//k[text()=\"playerColor2\"]/following-sibling::i")) {
+					info.playerColor2 = numFromString<int>(find.node().value()).unwrapOrDefault();
+				}
+				if (ccgm.select_single_node("//k[text()=\"playerGlow\"]/following-sibling::t")) {
+					info.playerGlow = true;
+				}
+			}
+
+			auto ccllData = cc::parseCompressedCCFile(path / "CCLocalLevels.dat").unwrapOrDefault();
+			pugi::xml_document ccll;
+			if (ccll.load_buffer(ccllData.data(), ccllData.size())) {
+				info.levelCount = ccll.select_nodes("//k[text()=\"LLM_01\"]/following-sibling::d/k").size();
+			}
+
+			return info;
+		}));
+		return *m_infoTask;
+		// if (auto cached = file::readFromJson<BackupInfo>(m_path / "info-cache.json")) {
+		// 	return *cached;
+		// }
+		// // If loading the cache fails for whatever reason (doesn't exist, 
+		// // invalid json, outdated format), then reload info
+
+		// // Otherwise load from the CC files
+		// auto info = BackupInfo();
 		
-		// Load star count & icon
-		auto ccgm = DS_Dictionary();
-		ccgm.loadRootSubDictFromCompressedFile(
-			// Absolute path doesn't work for some reason, and also for some reason 
-			// we are operating in the GD save directory
-			std::filesystem::relative(m_path / "CCGameManager.dat", dirs::getSaveDir()).string().c_str()
-		);
-		if (ccgm.stepIntoSubDictWithKey("GS_value")) {
-			info.starCount = numFromString<size_t>(ccgm.getStringForKey("6")).unwrapOr(0);
-			ccgm.stepOutOfSubDict();
-		}
-		info.playerIcon = ccgm.getIntegerForKey("playerFrame");
-		info.playerColor1 = ccgm.getIntegerForKey("playerColor");
-		info.playerColor2 = ccgm.getIntegerForKey("playerColor2");
-		if (ccgm.getBoolForKey("playerGlow")) {
-			info.playerGlow = ccgm.getIntegerForKey("playerColor3");
-		}
+		// // Load star count & icon
+		// auto ccgm = DS_Dictionary();
+		// ccgm.loadRootSubDictFromCompressedFile(
+		// 	// Absolute path doesn't work for some reason, and also for some reason 
+		// 	// we are operating in the GD save directory
+		// 	std::filesystem::relative(m_path / "CCGameManager.dat", dirs::getSaveDir()).string().c_str()
+		// );
+		// if (ccgm.stepIntoSubDictWithKey("GS_value")) {
+		// 	info.starCount = numFromString<size_t>(ccgm.getStringForKey("6")).unwrapOr(0);
+		// 	ccgm.stepOutOfSubDict();
+		// }
+		// info.playerIcon = ccgm.getIntegerForKey("playerFrame");
+		// info.playerColor1 = ccgm.getIntegerForKey("playerColor");
+		// info.playerColor2 = ccgm.getIntegerForKey("playerColor2");
+		// if (ccgm.getBoolForKey("playerGlow")) {
+		// 	info.playerGlow = ccgm.getIntegerForKey("playerColor3");
+		// }
 
-		// Load level count
-		auto ccll = DS_Dictionary();
-		ccll.loadRootSubDictFromCompressedFile(
-			std::filesystem::relative(m_path / "CCLocalLevels.dat", dirs::getSaveDir()).string().c_str()
-		);
-		if (ccll.stepIntoSubDictWithKey("LLM_01")) {
-			info.levelCount = ccll.getAllKeys().size();
-			ccll.stepOutOfSubDict();
-		}
+		// // Load level count
+		// auto ccll = DS_Dictionary();
+		// ccll.loadRootSubDictFromCompressedFile(
+		// 	std::filesystem::relative(m_path / "CCLocalLevels.dat", dirs::getSaveDir()).string().c_str()
+		// );
+		// if (ccll.stepIntoSubDictWithKey("LLM_01")) {
+		// 	info.levelCount = ccll.getAllKeys().size();
+		// 	ccll.stepOutOfSubDict();
+		// }
 
-		// Save cache
-		(void)file::writeToJson(m_path / "info-cache.json", info);
+		// // Save cache
+		// (void)file::writeToJson(m_path / "info-cache.json", info);
 
-		return info;
+		// return info;
 	}
 	Result<> restoreBackup() const {
 		std::error_code ec;
@@ -360,6 +372,129 @@ public:
 			return Err("Unable to delete backup: {} (code {})", ec.message(), ec.value());
 		}
 		return Ok();
+	}
+};
+
+class BackupsPopup;
+
+class BackupNode : public CCNode {
+protected:
+	BackupsPopup* m_popup;
+	Ref<Backup> m_backup;
+	LoadingSpinner* m_loadingCircle;
+	EventListener<Task<BackupInfo>> m_infoListener;
+
+	bool init(BackupsPopup* popup, Ref<Backup> backup, float width) {
+		if (!CCNode::init())
+			return false;
+
+		m_popup = popup;
+		m_backup = backup;
+		this->setContentSize(ccp(width, 40));
+
+		auto bg = CCScale9Sprite::create("square02b_001.png");
+		bg->setScale(.3f);
+		bg->setContentSize(this->getContentSize() / bg->getScale());
+		bg->setColor(ccBLACK);
+		bg->setOpacity(140);
+		this->addChildAtPosition(bg, Anchor::Center);
+
+		auto name = CCLabelBMFont::create(backup->getUser().c_str(), "bigFont.fnt");
+		name->limitLabelWidth(35, .3f, .05f);
+		this->addChildAtPosition(name, Anchor::Left, ccp(20, -12));
+
+		auto title = CCLabelBMFont::create(toAgoString(backup->getTime()).c_str(), "goldFont.fnt");
+		title->setScale(.45f);
+		title->setAnchorPoint({ .0f, .4f });
+		this->addChildAtPosition(title, Anchor::Left, ccp(60, 10));
+
+		m_loadingCircle = LoadingSpinner::create(30);
+		this->addChildAtPosition(m_loadingCircle, Anchor::Left, ccp(20, 5));
+
+		m_infoListener.bind(this, &BackupNode::onInfo);
+		m_infoListener.setFilter(backup->loadInfo());
+
+		return true;
+	}
+
+	void onInfo(Task<BackupInfo>::Event* event) {
+		if (auto info = event->getValue()) {
+			if (m_loadingCircle) {
+				m_loadingCircle->removeFromParent();
+				m_loadingCircle = nullptr;
+			}
+
+			auto icon = SimplePlayer::create(info->playerIcon);
+			icon->setColor(GameManager::get()->colorForIdx(info->playerColor1));
+			icon->setSecondColor(GameManager::get()->colorForIdx(info->playerColor2));
+			if (info->playerGlow) {
+				icon->setGlowOutline(GameManager::get()->colorForIdx(*info->playerGlow));
+			}
+			icon->setScale(.65f);
+			this->addChildAtPosition(icon, Anchor::Left, ccp(20, 5));
+
+			auto agoSpr = CCSprite::createWithSpriteFrameName("GJ_timeIcon_001.png");
+			agoSpr->setScale(.5f);
+			agoSpr->setAnchorPoint({ .0f, .5f });
+			this->addChildAtPosition(agoSpr, Anchor::Left, ccp(45, 10));
+
+			auto starSpr = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
+			starSpr->setScale(.5f);
+			starSpr->setAnchorPoint({ .0f, .5f });
+			this->addChildAtPosition(starSpr, Anchor::Left, ccp(45, -10));
+
+			auto starCount = m_backup->hasGameManager() ? std::to_string(info->starCount) : "N/A";
+			auto starLabel = CCLabelBMFont::create(starCount.c_str(), "bigFont.fnt");
+			starLabel->setScale(.4f);
+			starLabel->setAnchorPoint({ .0f, .5f });
+			this->addChildAtPosition(starLabel, Anchor::Left, ccp(60, -10));
+
+			auto levelSpr = CCSprite::createWithSpriteFrameName("GJ_hammerIcon_001.png");
+			levelSpr->setScale(.5f);
+			levelSpr->setAnchorPoint({ .0f, .5f });
+			this->addChildAtPosition(levelSpr, Anchor::Left, ccp(105, -10));
+
+			auto levelCount = m_backup->hasLocalLevels() ? std::to_string(info->levelCount) + " levels" : "N/A";
+			auto levelLabel = CCLabelBMFont::create(levelCount.c_str(), "bigFont.fnt");
+			levelLabel->setScale(.4f);
+			levelLabel->setAnchorPoint({ .0f, .5f });
+			this->addChildAtPosition(levelLabel, Anchor::Left, ccp(120, -10));
+
+			auto menu = CCMenu::create();
+			menu->setContentWidth(100);
+			menu->setAnchorPoint({ 1, .5f });
+			menu->setScale(.75f);
+
+			auto restoreSpr = ButtonSprite::create("Restore", "bigFont.fnt", "GJ_button_03.png", .8f);
+			restoreSpr->setScale(.65f);
+			auto restoreBtn = CCMenuItemSpriteExtra::create(
+				restoreSpr, this, menu_selector(BackupNode::onRestore)
+			);
+			menu->addChild(restoreBtn);
+
+			auto deleteSpr = CCSprite::createWithSpriteFrameName("GJ_resetBtn_001.png");
+			auto deleteBtn = CCMenuItemSpriteExtra::create(
+				deleteSpr, this, menu_selector(BackupNode::onDelete)
+			);
+			menu->addChild(deleteBtn);
+
+			menu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::End)->setAxisReverse(true));
+			this->addChildAtPosition(menu, Anchor::Right, ccp(-10, 0));
+		}
+	}
+
+	void onRestore(CCObject*);
+	void onDelete(CCObject*);
+
+public:
+	static BackupNode* create(BackupsPopup* popup, Ref<Backup> backup, float width) {
+		auto ret = new BackupNode();
+		if (ret && ret->init(popup, backup, width)) {
+			ret->autorelease();
+			return ret;
+		}
+		CC_SAFE_DELETE(ret);
+		return nullptr;
 	}
 };
 
@@ -411,113 +546,6 @@ protected:
 		return true;
 	}
 
-	void reload() {
-		m_list->m_contentLayer->removeAllChildren();
-		auto backups = Backup::get(m_dir);
-		if (backups.empty()) {
-			auto node = CCNode::create();
-			node->setContentSize({ m_list->getContentWidth(), 30 });
-
-			auto bg = CCScale9Sprite::create("square02b_001.png");
-			bg->setScale(.3f);
-			bg->setContentSize(node->getContentSize() / bg->getScale());
-			bg->setColor(ccBLACK);
-			bg->setOpacity(140);
-			node->addChildAtPosition(bg, Anchor::Center);
-
-			auto info = CCLabelBMFont::create("No Backups Found!", "bigFont.fnt");
-			info->setScale(.45f);
-			node->addChildAtPosition(info, Anchor::Center);
-
-			m_list->m_contentLayer->addChild(node);
-		}
-		for (auto backup : backups) {
-			auto info = backup->loadInfo();
-
-			auto node = CCNode::create();
-			node->setContentSize({ m_list->getContentWidth(), 40 });
-
-			auto bg = CCScale9Sprite::create("square02b_001.png");
-			bg->setScale(.3f);
-			bg->setContentSize(node->getContentSize() / bg->getScale());
-			bg->setColor(ccBLACK);
-			bg->setOpacity(140);
-			node->addChildAtPosition(bg, Anchor::Center);
-
-			auto icon = SimplePlayer::create(info.playerIcon);
-			icon->setColor(GameManager::get()->colorForIdx(info.playerColor1));
-			icon->setSecondColor(GameManager::get()->colorForIdx(info.playerColor2));
-			if (info.playerGlow) {
-				icon->setGlowOutline(GameManager::get()->colorForIdx(*info.playerGlow));
-			}
-			icon->setScale(.65f);
-			node->addChildAtPosition(icon, Anchor::Left, ccp(20, 5));
-
-			auto name = CCLabelBMFont::create(backup->getUser().c_str(), "bigFont.fnt");
-			name->limitLabelWidth(35, .3f, .05f);
-			node->addChildAtPosition(name, Anchor::Left, ccp(20, -12));
-
-			auto agoSpr = CCSprite::createWithSpriteFrameName("GJ_timeIcon_001.png");
-			agoSpr->setScale(.5f);
-			agoSpr->setAnchorPoint({ .0f, .5f });
-			node->addChildAtPosition(agoSpr, Anchor::Left, ccp(45, 10));
-
-			auto title = CCLabelBMFont::create(toAgoString(backup->getTime()).c_str(), "goldFont.fnt");
-			title->setScale(.45f);
-			title->setAnchorPoint({ .0f, .4f });
-			node->addChildAtPosition(title, Anchor::Left, ccp(60, 10));
-
-			auto starSpr = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
-			starSpr->setScale(.5f);
-			starSpr->setAnchorPoint({ .0f, .5f });
-			node->addChildAtPosition(starSpr, Anchor::Left, ccp(45, -10));
-
-			auto starCount = backup->hasGameManager() ? std::to_string(info.starCount) : "N/A";
-			auto starLabel = CCLabelBMFont::create(starCount.c_str(), "bigFont.fnt");
-			starLabel->setScale(.4f);
-			starLabel->setAnchorPoint({ .0f, .5f });
-			node->addChildAtPosition(starLabel, Anchor::Left, ccp(60, -10));
-
-			auto levelSpr = CCSprite::createWithSpriteFrameName("GJ_hammerIcon_001.png");
-			levelSpr->setScale(.5f);
-			levelSpr->setAnchorPoint({ .0f, .5f });
-			node->addChildAtPosition(levelSpr, Anchor::Left, ccp(105, -10));
-
-			auto levelCount = backup->hasLocalLevels() ? std::to_string(info.levelCount) + " levels" : "N/A";
-			auto levelLabel = CCLabelBMFont::create(levelCount.c_str(), "bigFont.fnt");
-			levelLabel->setScale(.4f);
-			levelLabel->setAnchorPoint({ .0f, .5f });
-			node->addChildAtPosition(levelLabel, Anchor::Left, ccp(120, -10));
-
-			auto menu = CCMenu::create();
-			menu->setContentWidth(100);
-			menu->setAnchorPoint({ 1, .5f });
-			menu->setScale(.75f);
-
-			auto restoreSpr = ButtonSprite::create("Restore", "bigFont.fnt", "GJ_button_03.png", .8f);
-			restoreSpr->setScale(.65f);
-			auto restoreBtn = CCMenuItemSpriteExtra::create(
-				restoreSpr, this, menu_selector(BackupsPopup::onRestore)
-			);
-			restoreBtn->setUserObject(backup);
-			menu->addChild(restoreBtn);
-
-			auto deleteSpr = CCSprite::createWithSpriteFrameName("GJ_resetBtn_001.png");
-			auto deleteBtn = CCMenuItemSpriteExtra::create(
-				deleteSpr, this, menu_selector(BackupsPopup::onDelete)
-			);
-			deleteBtn->setUserObject(backup);
-			menu->addChild(deleteBtn);
-
-			menu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::End)->setAxisReverse(true));
-			node->addChildAtPosition(menu, Anchor::Right, ccp(-10, 0));
-
-			m_list->m_contentLayer->addChild(node);
-		}
-		m_list->m_contentLayer->updateLayout();
-		m_list->scrollToTop();
-	}
-
 	void onImportPicked(ImportTask::Event* ev) {
 		if (auto res = ev->getValue()) {
 			if (res->isOk()) {
@@ -565,68 +593,6 @@ protected:
 		this->reload();
 	}
 
-	void onRestore(CCObject* sender) {
-		static bool TOGGLED = true;
-
-		auto backup = static_cast<Backup*>(static_cast<CCNode*>(sender)->getUserObject());
-		auto toggle = CCMenuItemExt::createTogglerWithStandardSprites(1.5f, [](auto* toggle) {
-			TOGGLED = !toggle->isToggled();
-		});
-		auto popup = createQuickPopup(
-			"Restore Backup",
-			"Do you want to <cp>restore this backup</c>?\n"
-			"<cj>The game will be restarted.</c>\n\n",
-			"Cancel", "Restore",
-			[list = Ref(this), backup = Ref(backup), toggle](auto, bool btn2) {
-				if (btn2) {
-					if (TOGGLED) {
-						auto newRes = Backup::create(list->m_dir, false);
-						if (!newRes) {
-							return FLAlertLayer::create("Unable to Backup", newRes.unwrapErr(), "OK")->show();
-						}
-					}
-					auto res = backup->restoreBackup();
-					if (!res) {
-						return FLAlertLayer::create("Unable to Restore", res.unwrapErr(), "OK")->show();
-					}
-					DO_NOT_SAVE_GAME = true;
-					game::restart();
-				}
-			}
-		);
-		auto toggleMenu = CCMenu::create();
-		toggleMenu->setZOrder(20);
-
-		toggleMenu->addChild(toggle);
-		toggleMenu->addChild(CCLabelBMFont::create("Backup current progress first", "bigFont.fnt"));
-
-		toggleMenu->setLayout(RowLayout::create()->setDefaultScaleLimits(.1f, .35f)->setGap(20));
-		toggleMenu->setPosition(CCDirector::get()->getWinSize() / 2 - ccp(0, 17.5f));
-		popup->m_mainLayer->addChild(toggleMenu);
-
-		toggle->toggle(TOGGLED);
-
-		handleTouchPriority(popup);
-	}
-	void onDelete(CCObject* sender) {
-		auto backup = static_cast<Backup*>(static_cast<CCNode*>(sender)->getUserObject());
-		createQuickPopup(
-			"Delete Backup",
-			"Are you sure you want to <cr>delete this backup</c>?\n"
-			"<co>This action is IRREVERSIBLE!</c>",
-			"Cancel", "Delete",
-			[list = Ref(this), backup = Ref(backup)](auto, bool btn2) {
-				if (btn2) {
-					auto res = backup->deleteBackup();
-					if (!res) {
-						FLAlertLayer::create("Unable to Delete", res.unwrapErr(), "OK")->show();
-					}
-					list->reload();
-				}
-			}
-		);
-	}
-
 public:
 	static BackupsPopup* create(std::filesystem::path const& dir) {
 		auto ret = new BackupsPopup();
@@ -637,7 +603,99 @@ public:
 		CC_SAFE_DELETE(ret);
 		return nullptr;
 	}
+
+	std::filesystem::path getDir() const {
+		return m_dir;
+	}
+
+	void reload() {
+		m_list->m_contentLayer->removeAllChildren();
+		auto backups = Backup::get(m_dir);
+		if (backups.empty()) {
+			auto node = CCNode::create();
+			node->setContentSize({ m_list->getContentWidth(), 30 });
+
+			auto bg = CCScale9Sprite::create("square02b_001.png");
+			bg->setScale(.3f);
+			bg->setContentSize(node->getContentSize() / bg->getScale());
+			bg->setColor(ccBLACK);
+			bg->setOpacity(140);
+			node->addChildAtPosition(bg, Anchor::Center);
+
+			auto info = CCLabelBMFont::create("No Backups Found!", "bigFont.fnt");
+			info->setScale(.45f);
+			node->addChildAtPosition(info, Anchor::Center);
+
+			m_list->m_contentLayer->addChild(node);
+		}
+		for (auto backup : backups) {
+			auto node = BackupNode::create(this, backup, m_list->getContentWidth());
+			m_list->m_contentLayer->addChild(node);
+		}
+		m_list->m_contentLayer->updateLayout();
+		m_list->scrollToTop();
+	}
 };
+
+void BackupNode::onRestore(CCObject*) {
+	static bool TOGGLED = true;
+
+	auto toggle = CCMenuItemExt::createTogglerWithStandardSprites(1.5f, [](auto* toggle) {
+		TOGGLED = !toggle->isToggled();
+	});
+	auto popup = createQuickPopup(
+		"Restore Backup",
+		"Do you want to <cp>restore this backup</c>?\n"
+		"<cj>The game will be restarted.</c>\n\n",
+		"Cancel", "Restore",
+		[self = Ref(this), toggle](auto, bool btn2) {
+			if (btn2) {
+				if (TOGGLED) {
+					auto newRes = Backup::create(self->m_popup->getDir(), false);
+					if (!newRes) {
+						return FLAlertLayer::create("Unable to Backup", newRes.unwrapErr(), "OK")->show();
+					}
+				}
+				auto res = self->m_backup->restoreBackup();
+				if (!res) {
+					return FLAlertLayer::create("Unable to Restore", res.unwrapErr(), "OK")->show();
+				}
+				DO_NOT_SAVE_GAME = true;
+				game::restart();
+			}
+		}
+	);
+	auto toggleMenu = CCMenu::create();
+	toggleMenu->setZOrder(20);
+
+	toggleMenu->addChild(toggle);
+	toggleMenu->addChild(CCLabelBMFont::create("Backup current progress first", "bigFont.fnt"));
+
+	toggleMenu->setLayout(RowLayout::create()->setDefaultScaleLimits(.1f, .35f)->setGap(20));
+	toggleMenu->setPosition(CCDirector::get()->getWinSize() / 2 - ccp(0, 17.5f));
+	popup->m_mainLayer->addChild(toggleMenu);
+
+	toggle->toggle(TOGGLED);
+
+	handleTouchPriority(popup);
+}
+void BackupNode::onDelete(CCObject*) {
+	createQuickPopup(
+		"Delete Backup",
+		"Are you sure you want to <cr>delete this backup</c>?\n"
+		"<co>This action is IRREVERSIBLE!</c>",
+		"Cancel", "Delete",
+		[self = Ref(this)](auto, bool btn2) {
+			if (btn2) {
+				auto res = self->m_backup->deleteBackup();
+				if (!res) {
+					FLAlertLayer::create("Unable to Delete", res.unwrapErr(), "OK")->show();
+				}
+				self->m_popup->reload();
+			}
+		}
+	);
+}
 
 static std::chrono::hours backupRateToHours(std::string const& rate) {
 	switch (hash(rate.c_str())) {
@@ -822,17 +880,6 @@ class $modify(MyAccountLayer, AccountLayer) {
 		}
 	}
 	void onBackups(CCObject*) {
-		// Opening the popup may take a while as non-cached backup info has to be loaded
-		auto waitLabel = CCLabelBMFont::create("Loading Backups...", "bigFont.fnt");
-		this->addChildAtPosition(waitLabel, Anchor::Center, ccp(0, 0), false);
-		waitLabel->runAction(CCSequence::create(
-			CCDelayTime::create(0),
-			CCCallFunc::create(this, callfunc_selector(MyAccountLayer::onBackups2)),
-			CCRemoveSelf::create(),
-			nullptr
-		));
-	}
-	void onBackups2() {
 		BackupsPopup::create(dirs::getSaveDir() / "geode-backups")->show();
 	}
 };

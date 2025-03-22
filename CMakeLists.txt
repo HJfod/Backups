@@ -8,7 +8,7 @@ project(Backups VERSION 1.0.0)
 
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp
-    # Add any extra C++ source files here
+    src/ParseCC.cpp
 )
 
 if (NOT DEFINED ENV{GEODE_SDK})
@@ -20,3 +20,6 @@ endif()
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
 setup_geode_mod(${PROJECT_NAME})
+
+CPMAddPackage("gh:tplgy/cppcodec#8019b8b")
+target_link_libraries(${PROJECT_NAME} cppcodec)
