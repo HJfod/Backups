@@ -1,5 +1,5 @@
 {
-	"geode": "4.1.0",
+	"geode": "4.3.1",
 	"gd": {
 		"win": "2.2074",
 		"android": "2.2074",
@@ -31,12 +31,6 @@
 			"max": 15,
 			"name": "Auto Backup Limit",
 			"description": "When creating automatic backups, if there are more than this amount of backups, the oldest automated backup will be deleted. <cy>Does not affect manually created backups, and automatic backups can be marked as non-deletable.<c/>"
-		},
-		"ask-for-online-backup-on-exit": {
-			"type": "bool",
-			"default": true,
-			"name": "Ask to Save to Cloud",
-			"description": "If enabled, also uses GD's built-in backup system to ask to <cy>Save to Cloud</c> on game exit."
 		}
 	},
 	"tags": ["offline", "universal"]

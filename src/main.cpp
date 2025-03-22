@@ -579,8 +579,8 @@ protected:
 			"Cancel", "Restore",
 			[list = Ref(this), backup = Ref(backup), toggle](auto, bool btn2) {
 				if (btn2) {
-					if (toggle->isToggled()) {
-						auto newRes = Backup::create(backup->getPath(), false);
+					if (TOGGLED) {
+						auto newRes = Backup::create(list->m_dir, false);
 						if (!newRes) {
 							return FLAlertLayer::create("Unable to Backup", newRes.unwrapErr(), "OK")->show();
 						}
@@ -697,9 +697,9 @@ public:
 };
 
 class $modify(MenuLayer) {
-	struct Fields {
-		bool doQuitGame = false;
-	};
+	// struct Fields {
+	// 	bool doQuitGame = false;
+	// };
 
 	bool init() {
 		if (!MenuLayer::init()) {
@@ -747,28 +747,28 @@ class $modify(MenuLayer) {
 		return true;
 	}
 
-	void onQuit(CCObject* sender) {
-		log::info("blah");
-		if (m_fields->doQuitGame) {
-			MenuLayer::onQuit(sender);
-		}
-		else {
-			createQuickPopup(
-				"Save to Cloud",
-				"Do you want to <cy>Save your Progress to the Cloud</c> before quitting?",
-				"Just Quit", "Save First",
-				[this](auto, bool btn2) {
-					m_fields->doQuitGame = true;
-					if (!btn2) {
-						this->onQuit(nullptr);
-					}
-					else {
-						SaveToCloudPopup::create()->show();
-					}
-				}
-			);
-		}
-	}
+	// void onQuit(CCObject* sender) {
+	// 	log::info("blah");
+	// 	if (m_fields->doQuitGame) {
+	// 		MenuLayer::onQuit(sender);
+	// 	}
+	// 	else {
+	// 		createQuickPopup(
+	// 			"Save to Cloud",
+	// 			"Do you want to <cy>Save your Progress to the Cloud</c> before quitting?",
+	// 			"Just Quit", "Save First",
+	// 			[this](auto, bool btn2) {
+	// 				m_fields->doQuitGame = true;
+	// 				if (!btn2) {
+	// 					this->onQuit(nullptr);
+	// 				}
+	// 				else {
+	// 					SaveToCloudPopup::create()->show();
+	// 				}
+	// 			}
+	// 		);
+	// 	}
+	// }
 };
 class $modify(OptionsLayer) {
 	void customSetup() {
