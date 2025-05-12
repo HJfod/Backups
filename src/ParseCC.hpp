@@ -7,5 +7,5 @@
 using namespace geode::prelude;
 
 namespace cc {
-    Result<std::string> parseCompressedCCFile(std::filesystem::path const& path);
+    Result<std::string> parseCompressedCCFile(std::filesystem::path const& path, std::function<bool()> cancelled);
 }

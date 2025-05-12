@@ -12,16 +12,28 @@
 #include <Geode/ui/Notification.hpp>
 #include <Geode/ui/BasedButtonSprite.hpp>
 #include <Geode/ui/LoadingSpinner.hpp>
-#include <Geode/cocos/robtop/xml/pugixml.hpp>
 #include <chrono>
 #include <filesystem>
 #include <fmt/chrono.h>
 #include "ParseCC.hpp"
+#include <pugixml.hpp>
 
 using namespace geode::prelude;
 
 using Clock = std::chrono::system_clock;
 using Time = std::chrono::time_point<Clock>;
+
+constexpr size_t BACKUPS_PER_PAGE = 10;
+
+static void enableButton(CCMenuItemSpriteExtra* btn, bool enabled, bool visualOnly = false) {
+    btn->setEnabled(enabled || visualOnly);
+    if (auto spr = typeinfo_cast<CCRGBAProtocol*>(btn->getNormalImage())) {
+        spr->setCascadeColorEnabled(true);
+        spr->setCascadeOpacityEnabled(true);
+        spr->setColor(enabled ? ccWHITE : ccc3(100, 100, 100));
+        // spr->setOpacity(enabled ? 255 : 200);
+    }
+}
 
 static std::string toAgoString(Time const& time) {
     auto const fmtPlural = [](auto count, auto unit) {
@@ -276,30 +288,50 @@ public:
 		if (m_infoTask) {
 			return *m_infoTask;
 		}
-		m_infoTask.emplace(Task<BackupInfo>::run([path = m_path](auto, auto) -> Task<BackupInfo>::Result {
+		m_infoTask.emplace(Task<BackupInfo>::run([path = m_path](auto, auto cancelled) -> Task<BackupInfo>::Result {
 			auto info = BackupInfo();
 
-			auto ccgmData = cc::parseCompressedCCFile(path / "CCGameManager.dat").unwrapOrDefault();
+			auto ccgmData = cc::parseCompressedCCFile(path / "CCGameManager.dat", cancelled).unwrapOrDefault();
+
+			if (cancelled()) {
+				return Task<BackupInfo>::Cancel();
+			}
+
 			pugi::xml_document ccgm;
 			if (ccgm.load_buffer(ccgmData.data(), ccgmData.size())) {
-				if (auto find = ccgm.select_single_node("//k[text()=\"GS_Value\"]/following-sibling::d/k[text()=\"6\"]/following-sibling::s")) {
-					info.starCount = numFromString<int>(find.node().value()).unwrapOrDefault();
+				if (auto find = ccgm.select_single_node(
+					"//k[normalize-space()=\"GS_value\"]/following-sibling::d/k[normalize-space()=\"6\"]/following-sibling::s"
+				)) {
+					info.starCount = find.node().text().as_int();
 				}
-				if (auto find = ccgm.select_single_node("//k[text()=\"playerFrame\"]/following-sibling::i")) {
-					info.playerIcon = numFromString<int>(find.node().value()).unwrapOrDefault();
+				if (auto find = ccgm.select_single_node(
+					"//k[normalize-space()=\"playerFrame\"]/following-sibling::i"
+				)) {
+					info.playerIcon = find.node().text().as_int();
 				}
-				if (auto find = ccgm.select_single_node("//k[text()=\"playerColor\"]/following-sibling::i")) {
-					info.playerColor1 = numFromString<int>(find.node().value()).unwrapOrDefault();
+				if (auto find = ccgm.select_single_node(
+					"//k[normalize-space()=\"playerColor\"]/following-sibling::i"
+				)) {
+					info.playerColor1 = find.node().text().as_int();
 				}
-				if (auto find = ccgm.select_single_node("//k[text()=\"playerColor2\"]/following-sibling::i")) {
-					info.playerColor2 = numFromString<int>(find.node().value()).unwrapOrDefault();
+				if (auto find = ccgm.select_single_node(
+					"//k[normalize-space()=\"playerColor2\"]/following-sibling::i"
+				)) {
+					info.playerColor2 = find.node().text().as_int();
 				}
-				if (ccgm.select_single_node("//k[text()=\"playerGlow\"]/following-sibling::t")) {
+				if (ccgm.select_single_node(
+					"//k[normalize-space()=\"playerGlow\"]/following-sibling::t"
+				)) {
 					info.playerGlow = true;
 				}
 			}
 
-			auto ccllData = cc::parseCompressedCCFile(path / "CCLocalLevels.dat").unwrapOrDefault();
+			auto ccllData = cc::parseCompressedCCFile(path / "CCLocalLevels.dat", cancelled).unwrapOrDefault();
+
+			if (cancelled()) {
+				return Task<BackupInfo>::Cancel();
+			}
+
 			pugi::xml_document ccll;
 			if (ccll.load_buffer(ccllData.data(), ccllData.size())) {
 				info.levelCount = ccll.select_nodes("//k[text()=\"LLM_01\"]/following-sibling::d/k").size();
@@ -308,47 +340,12 @@ public:
 			return info;
 		}));
 		return *m_infoTask;
-		// if (auto cached = file::readFromJson<BackupInfo>(m_path / "info-cache.json")) {
-		// 	return *cached;
-		// }
-		// // If loading the cache fails for whatever reason (doesn't exist, 
-		// // invalid json, outdated format), then reload info
-
-		// // Otherwise load from the CC files
-		// auto info = BackupInfo();
-		
-		// // Load star count & icon
-		// auto ccgm = DS_Dictionary();
-		// ccgm.loadRootSubDictFromCompressedFile(
-		// 	// Absolute path doesn't work for some reason, and also for some reason 
-		// 	// we are operating in the GD save directory
-		// 	std::filesystem::relative(m_path / "CCGameManager.dat", dirs::getSaveDir()).string().c_str()
-		// );
-		// if (ccgm.stepIntoSubDictWithKey("GS_value")) {
-		// 	info.starCount = numFromString<size_t>(ccgm.getStringForKey("6")).unwrapOr(0);
-		// 	ccgm.stepOutOfSubDict();
-		// }
-		// info.playerIcon = ccgm.getIntegerForKey("playerFrame");
-		// info.playerColor1 = ccgm.getIntegerForKey("playerColor");
-		// info.playerColor2 = ccgm.getIntegerForKey("playerColor2");
-		// if (ccgm.getBoolForKey("playerGlow")) {
-		// 	info.playerGlow = ccgm.getIntegerForKey("playerColor3");
-		// }
-
-		// // Load level count
-		// auto ccll = DS_Dictionary();
-		// ccll.loadRootSubDictFromCompressedFile(
-		// 	std::filesystem::relative(m_path / "CCLocalLevels.dat", dirs::getSaveDir()).string().c_str()
-		// );
-		// if (ccll.stepIntoSubDictWithKey("LLM_01")) {
-		// 	info.levelCount = ccll.getAllKeys().size();
-		// 	ccll.stepOutOfSubDict();
-		// }
-
-		// // Save cache
-		// (void)file::writeToJson(m_path / "info-cache.json", info);
-
-		// return info;
+	}
+	void cancelLoadInfoIfNotComplete() {
+		if (m_infoTask && !m_infoTask->isFinished()) {
+			m_infoTask->cancel();
+			m_infoTask = std::nullopt;
+		}
 	}
 	Result<> restoreBackup() const {
 		std::error_code ec;
@@ -408,8 +405,29 @@ protected:
 		title->setAnchorPoint({ .0f, .4f });
 		this->addChildAtPosition(title, Anchor::Left, ccp(60, 10));
 
-		m_loadingCircle = LoadingSpinner::create(30);
+		m_loadingCircle = LoadingSpinner::create(20);
 		this->addChildAtPosition(m_loadingCircle, Anchor::Left, ccp(20, 5));
+
+		auto menu = CCMenu::create();
+		menu->setContentWidth(100);
+		menu->setAnchorPoint({ 1, .5f });
+		menu->setScale(.75f);
+
+		auto restoreSpr = ButtonSprite::create("Restore", "bigFont.fnt", "GJ_button_03.png", .8f);
+		restoreSpr->setScale(.65f);
+		auto restoreBtn = CCMenuItemSpriteExtra::create(
+			restoreSpr, this, menu_selector(BackupNode::onRestore)
+		);
+		menu->addChild(restoreBtn);
+
+		auto deleteSpr = CCSprite::createWithSpriteFrameName("GJ_resetBtn_001.png");
+		auto deleteBtn = CCMenuItemSpriteExtra::create(
+			deleteSpr, this, menu_selector(BackupNode::onDelete)
+		);
+		menu->addChild(deleteBtn);
+
+		menu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::End)->setAxisReverse(true));
+		this->addChildAtPosition(menu, Anchor::Right, ccp(-10, 0));
 
 		m_infoListener.bind(this, &BackupNode::onInfo);
 		m_infoListener.setFilter(backup->loadInfo());
@@ -459,27 +477,6 @@ protected:
 			levelLabel->setScale(.4f);
 			levelLabel->setAnchorPoint({ .0f, .5f });
 			this->addChildAtPosition(levelLabel, Anchor::Left, ccp(120, -10));
-
-			auto menu = CCMenu::create();
-			menu->setContentWidth(100);
-			menu->setAnchorPoint({ 1, .5f });
-			menu->setScale(.75f);
-
-			auto restoreSpr = ButtonSprite::create("Restore", "bigFont.fnt", "GJ_button_03.png", .8f);
-			restoreSpr->setScale(.65f);
-			auto restoreBtn = CCMenuItemSpriteExtra::create(
-				restoreSpr, this, menu_selector(BackupNode::onRestore)
-			);
-			menu->addChild(restoreBtn);
-
-			auto deleteSpr = CCSprite::createWithSpriteFrameName("GJ_resetBtn_001.png");
-			auto deleteBtn = CCMenuItemSpriteExtra::create(
-				deleteSpr, this, menu_selector(BackupNode::onDelete)
-			);
-			menu->addChild(deleteBtn);
-
-			menu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::End)->setAxisReverse(true));
-			this->addChildAtPosition(menu, Anchor::Right, ccp(-10, 0));
 		}
 	}
 
@@ -496,6 +493,10 @@ public:
 		CC_SAFE_DELETE(ret);
 		return nullptr;
 	}
+
+	virtual ~BackupNode() {
+		m_backup->cancelLoadInfoIfNotComplete();
+	}
 };
 
 class BackupsPopup : public Popup<std::filesystem::path const&> {
@@ -504,7 +505,13 @@ protected:
 
 	std::filesystem::path m_dir;
 	ScrollLayer* m_list;
+	size_t m_page = 0;
+	size_t m_lastPage = 0;
+	std::vector<Ref<Backup>> m_backups;
 	EventListener<ImportTask> m_importPick;
+	CCLabelBMFont* m_pageLabel;
+	CCMenuItemSpriteExtra* m_prevPageBtn;
+	CCMenuItemSpriteExtra* m_nextPageBtn;
 
 	bool setup(std::filesystem::path const& dir) override {
 		m_dir = dir;
@@ -539,9 +546,29 @@ protected:
 		bottomMenu->setLayout(RowLayout::create()->setDefaultScaleLimits(.1f, .75f));
 		m_mainLayer->addChildAtPosition(bottomMenu, Anchor::Bottom, ccp(0, 25));
 
+		auto prevPageSpr = CCSprite::createWithSpriteFrameName("GJ_arrow_03_001.png");
+		m_prevPageBtn = CCMenuItemSpriteExtra::create(
+			prevPageSpr, this, menu_selector(BackupsPopup::onPage)
+		);
+		m_prevPageBtn->setTag(-1);
+		m_buttonMenu->addChildAtPosition(m_prevPageBtn, Anchor::Left);
+
+		auto nextPageSpr = CCSprite::createWithSpriteFrameName("GJ_arrow_03_001.png");
+		nextPageSpr->setFlipX(true);
+		m_nextPageBtn = CCMenuItemSpriteExtra::create(
+			nextPageSpr, this, menu_selector(BackupsPopup::onPage)
+		);
+		m_nextPageBtn->setTag(1);
+		m_buttonMenu->addChildAtPosition(m_nextPageBtn, Anchor::Right);
+
+		m_pageLabel = CCLabelBMFont::create("", "bigFont.fnt");
+		m_pageLabel->setAnchorPoint(ccp(1, 1));
+		m_pageLabel->setScale(.3f);
+		m_mainLayer->addChildAtPosition(m_pageLabel, Anchor::TopRight, ccp(-10, -5));
+
 		m_importPick.bind(this, &BackupsPopup::onImportPicked);
 
-		this->reload();
+		this->reloadAll();
 
 		return true;
 	}
@@ -560,7 +587,7 @@ protected:
 						),
 					"OK"
 				)->show();
-				this->reload();
+				this->reloadAll();
 			}
 			else {
 				FLAlertLayer::create("Error importing backups", res->unwrapErr(), "OK")->show();
@@ -590,7 +617,10 @@ protected:
 		else {
 			FLAlertLayer::create("Backup Failed", res.unwrapErr(), "OK")->show();
 		}
-		this->reload();
+		this->reloadAll();
+	}
+	void onPage(CCObject* sender) {
+		this->gotoPage(m_page + sender->getTag());
 	}
 
 public:
@@ -608,10 +638,12 @@ public:
 		return m_dir;
 	}
 
-	void reload() {
+	void gotoPage(size_t page) {
 		m_list->m_contentLayer->removeAllChildren();
-		auto backups = Backup::get(m_dir);
-		if (backups.empty()) {
+
+		if (m_backups.empty()) {
+			m_page = 0;
+			m_lastPage = 0;
 			auto node = CCNode::create();
 			node->setContentSize({ m_list->getContentWidth(), 30 });
 
@@ -628,12 +660,38 @@ public:
 
 			m_list->m_contentLayer->addChild(node);
 		}
-		for (auto backup : backups) {
-			auto node = BackupNode::create(this, backup, m_list->getContentWidth());
-			m_list->m_contentLayer->addChild(node);
+		else {
+			m_page = page;
+			m_lastPage = (m_backups.size() - 1) / BACKUPS_PER_PAGE;
+			if (m_page > m_lastPage) {
+				m_page = m_lastPage;
+			}
+
+			for (
+				size_t i = m_page * BACKUPS_PER_PAGE;
+				i < (m_page + 1) * BACKUPS_PER_PAGE && i < m_backups.size();
+				i += 1
+			) {
+				auto backup = m_backups.at(i);
+				auto node = BackupNode::create(this, backup, m_list->getContentWidth());
+				m_list->m_contentLayer->addChild(node);
+			}
 		}
+
 		m_list->m_contentLayer->updateLayout();
 		m_list->scrollToTop();
+
+		m_pageLabel->setString(fmt::format(
+			"Page {}/{} ({} backups)",
+			m_page + 1, m_lastPage + 1, m_backups.size()
+		).c_str());
+
+		enableButton(m_prevPageBtn, m_page > 0);
+		enableButton(m_nextPageBtn, m_page < m_lastPage);
+	}
+	void reloadAll() {
+		m_backups = Backup::get(m_dir);
+		this->gotoPage(0);
 	}
 };
 
@@ -691,7 +749,7 @@ void BackupNode::onDelete(CCObject*) {
 				if (!res) {
 					FLAlertLayer::create("Unable to Delete", res.unwrapErr(), "OK")->show();
 				}
-				self->m_popup->reload();
+				self->m_popup->reloadAll();
 			}
 		}
 	);

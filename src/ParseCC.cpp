@@ -5,17 +5,16 @@
 
 using namespace geode::prelude;
 
-Result<std::string> cc::parseCompressedCCFile(std::filesystem::path const& path) {
+Result<std::string> cc::parseCompressedCCFile(std::filesystem::path const& path, std::function<bool()> cancelled) {
     auto readRes = file::readBinary(path);
     if (!readRes) {
         return Err("Unable to read file: {}", readRes.unwrapErr());
     }
+    if (cancelled()) {
+        return Ok("");
+    }
     auto data = *readRes;
-
-    auto decompressed = ZipUtils::decompressString2(data.data(), true, data.size(), 11);
-    log::info("decompressed: {}", decompressed.substr(0, 100));
-
-    return Ok(decompressed);
+    return Ok(ZipUtils::decompressString2(data.data(), true, data.size(), 11));
 
     // auto readRes = file::readBinary(path);
     // if (!readRes) {
