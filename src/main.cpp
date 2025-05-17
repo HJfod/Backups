@@ -20,6 +20,14 @@ static std::chrono::hours backupRateToHours(std::string const& rate) {
 	}
 }
 
+$execute {
+	// todo: this thing
+	// the current backup directory should prolly be saved in a manager
+	listenForSettingChanges("backup-directory", +[](std::filesystem::path const& dir) {
+		// Backup::migrateAll(dir, )
+	});
+}
+
 class FollowInAnotherParent : public CCAction {
 protected:
 	Ref<CCNode> m_toFollow;
@@ -79,7 +87,10 @@ class $modify(MenuLayer) {
 		}
 
 		// Try cleaning up automated backups. If this fails, not a big deal honestly
-		(void)Backup::cleanupAutomated(dir);
+		auto cleanup = Backup::cleanupAutomated(dir);
+		if (!cleanup) {
+			log::error("Unable to clean up automated backups: {}", cleanup.unwrapErr());
+		}
 
 		// Create new backup
 		auto res = Backup::create(dir, true);

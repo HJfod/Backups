@@ -37,7 +37,10 @@ Backup::Backup(std::filesystem::path const& path) : m_path(path) {
         );
         (void)file::writeToJson(path / "metadata.json", BackupMetadata(time));
     }
-    m_autoRemove = std::filesystem::exists(path / "auto-remove.txt");
+    std::error_code ec;
+    if (std::filesystem::exists(path / "auto-remove.txt", ec)) {
+        m_autoRemoveOrder = 0;
+    }
     this->autorelease();
 }
 
@@ -54,19 +57,23 @@ std::vector<Ref<Backup>> Backup::get(std::filesystem::path const& dir) {
     std::sort(backups.begin(), backups.end(), [](auto first, auto second) {
         return first->m_meta.time > second->m_meta.time;
     });
+
+    // Set auto-remove order after sorting by time
+    size_t autoRemoveOrder = 0;
+    for (auto b : backups) {
+        if (b->m_autoRemoveOrder) {
+            b->m_autoRemoveOrder = autoRemoveOrder;
+            autoRemoveOrder += 1;
+        }
+    }
     return backups;
 }
 Result<> Backup::cleanupAutomated(std::filesystem::path const& dir) {
     auto backups = Backup::get(dir);
     int64_t limit = Mod::get()->getSettingValue<int64_t>("auto-backup-cleanup-limit");
     for (auto backup : backups) {
-        if (backup->isAutoRemove()) {
-            if (limit > 0) {
-                limit -= 1;
-            }
-            else {
-                GEODE_UNWRAP(backup->deleteBackup());
-            }
+        if (backup->getAutoRemoveOrder() >= limit) {
+            GEODE_UNWRAP(backup->deleteBackup());
         }
     }
     return Ok();
@@ -215,8 +222,19 @@ bool Backup::hasLocalLevels() const {
 bool Backup::hasGameManager() const {
     return std::filesystem::exists(m_path / "CCGameManager.dat");
 }
+
 bool Backup::isAutoRemove() const {
-    return m_autoRemove;
+    return m_autoRemoveOrder.has_value();
+}
+std::optional<size_t> Backup::getAutoRemoveOrder() const {
+    return m_autoRemoveOrder;
+}
+void Backup::preserve() {
+    std::error_code ec;
+    std::filesystem::remove(m_path / "auto-remove.txt", ec);
+    if (!ec) {
+        m_autoRemoveOrder = std::nullopt;
+    }
 }
 
 Task<BackupInfo> Backup::loadInfo() {
@@ -270,7 +288,11 @@ Task<BackupInfo> Backup::loadInfo() {
 
         pugi::xml_document ccll;
         if (ccll.load_buffer(ccllData.data(), ccllData.size())) {
-            info.levelCount = ccll.select_nodes("//k[text()=\"LLM_01\"]/following-sibling::d/k").size();
+            for (auto node : ccll
+                .select_nodes("//k[normalize-space()=\"LLM_01\"]/following-sibling::d/d/k[normalize-space()=\"k2\"]/following-sibling::s[position()=1]")
+            ) {
+                info.levels.push_back(node.node().text().as_string());
+            }
         }
 
         return info;

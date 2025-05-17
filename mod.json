@@ -31,6 +31,12 @@
 			"max": 15,
 			"name": "Auto Backup Limit",
 			"description": "When creating automatic backups, if there are more than this amount of backups, the oldest automated backup will be deleted. <cy>Does not affect manually created backups, and automatic backups can be marked as non-deletable.<c/>"
+		},
+		"backup-directory": {
+			"type": "folder",
+			"name": "Backup Save Directory",
+			"description": "The directory where backups are saved. Changing this will move all of the backups.",
+			"default": "{gd_save_dir}/geode-backups"
 		}
 	},
 	"tags": ["offline", "universal"]

@@ -32,14 +32,14 @@ struct BackupInfo final {
 	int playerColor2 = 0;
 	std::optional<int> playerGlow = 0;
 	int starCount = 0;
-	size_t levelCount = 0;
+	std::vector<std::string> levels;
 };
 
 class Backup final : public CCObject {
 private:
 	std::filesystem::path m_path;
 	BackupMetadata m_meta;
-	bool m_autoRemove = false;
+	std::optional<size_t> m_autoRemoveOrder;
 	std::optional<Task<BackupInfo>> m_infoTask;
 
 	Backup(std::filesystem::path const& path);
@@ -60,7 +60,10 @@ public:
 	std::chrono::hours getTimeSince() const;
 	bool hasLocalLevels() const;
 	bool hasGameManager() const;
+	
 	bool isAutoRemove() const;
+	std::optional<size_t> getAutoRemoveOrder() const;
+	void preserve();
 
 	Task<BackupInfo> loadInfo();
 	void cancelLoadInfoIfNotComplete();

@@ -15,10 +15,13 @@ protected:
 	Ref<Backup> m_backup;
 	LoadingSpinner* m_loadingCircle;
 	EventListener<Task<BackupInfo>> m_infoListener;
+    std::vector<std::string> m_loadedLevelNames;
 
 	bool init(BackupsPopup* popup, Ref<Backup> backup, float width);
 
-	void onInfo(Task<BackupInfo>::Event* event);
+	void onLoadInfo(Task<BackupInfo>::Event* event);
+    void onInfo(CCObject*);
+    void onLevels(CCObject*);
 
 	void onRestore(CCObject*);
 	void onDelete(CCObject*);

@@ -2,6 +2,7 @@
 #include <Geode/binding/SimplePlayer.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
 #include <Geode/modify/AppDelegate.hpp>
+#include <Geode/utils/ranges.hpp>
 
 constexpr size_t BACKUPS_PER_PAGE = 10;
 
@@ -55,6 +56,10 @@ bool BackupNode::init(BackupsPopup* popup, Ref<Backup> backup, float width) {
     bg->setOpacity(140);
     this->addChildAtPosition(bg, Anchor::Center);
 
+    if (backup->isAutoRemove()) {
+        bg->setColor(ccc3(24, 69, 114));
+    }
+
     auto name = CCLabelBMFont::create(backup->getUser().c_str(), "bigFont.fnt");
     name->limitLabelWidth(35, .3f, .05f);
     this->addChildAtPosition(name, Anchor::Left, ccp(20, -12));
@@ -85,21 +90,29 @@ bool BackupNode::init(BackupsPopup* popup, Ref<Backup> backup, float width) {
     );
     menu->addChild(deleteBtn);
 
+    auto infoSpr = CCSprite::createWithSpriteFrameName("GJ_infoIcon_001.png");
+    auto infoBtn = CCMenuItemSpriteExtra::create(
+        infoSpr, this, menu_selector(BackupNode::onInfo)
+    );
+    menu->addChild(infoBtn);
+
     menu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::End)->setAxisReverse(true));
     this->addChildAtPosition(menu, Anchor::Right, ccp(-10, 0));
 
-    m_infoListener.bind(this, &BackupNode::onInfo);
+    m_infoListener.bind(this, &BackupNode::onLoadInfo);
     m_infoListener.setFilter(backup->loadInfo());
 
     return true;
 }
 
-void BackupNode::onInfo(Task<BackupInfo>::Event* event) {
+void BackupNode::onLoadInfo(Task<BackupInfo>::Event* event) {
     if (auto info = event->getValue()) {
         if (m_loadingCircle) {
             m_loadingCircle->removeFromParent();
             m_loadingCircle = nullptr;
         }
+
+        m_loadedLevelNames = info->levels;
 
         auto icon = SimplePlayer::create(info->playerIcon);
         icon->setColor(GameManager::get()->colorForIdx(info->playerColor1));
@@ -131,12 +144,66 @@ void BackupNode::onInfo(Task<BackupInfo>::Event* event) {
         levelSpr->setAnchorPoint({ .0f, .5f });
         this->addChildAtPosition(levelSpr, Anchor::Left, ccp(105, -10));
 
-        auto levelCount = m_backup->hasLocalLevels() ? std::to_string(info->levelCount) + " levels" : "N/A";
+        auto levelCount = m_backup->hasLocalLevels() ? std::to_string(m_loadedLevelNames.size()) + " levels" : "N/A";
         auto levelLabel = CCLabelBMFont::create(levelCount.c_str(), "bigFont.fnt");
         levelLabel->setScale(.4f);
         levelLabel->setAnchorPoint({ .0f, .5f });
         this->addChildAtPosition(levelLabel, Anchor::Left, ccp(120, -10));
+
+        auto levelInfoMenu = CCMenu::create();
+        levelInfoMenu->ignoreAnchorPointForPosition(false);
+        levelInfoMenu->setContentSize(ccp(25, 25));
+        
+        auto levelInfoSpr = CCSprite::createWithSpriteFrameName("GJ_infoIcon_001.png");
+        levelInfoSpr->setScale(.5f);
+        auto levelInfoBtn = CCMenuItemSpriteExtra::create(
+            levelInfoSpr, this, menu_selector(BackupNode::onLevels)
+        );
+        levelInfoMenu->addChildAtPosition(levelInfoBtn, Anchor::Center);
+        this->addChildAtPosition(
+            levelInfoMenu, Anchor::Left,
+            ccp(120 + levelLabel->getScaledContentWidth() + 8, -10)
+        );
     }
+}
+void BackupNode::onInfo(CCObject*) {
+    auto content = fmt::format("Created on {:%Y/%m/%d}", m_backup->getTime());
+    if (m_backup->isAutoRemove()) {
+        createQuickPopup(
+            "Backup Info",
+            content + fmt::format(
+                "\n<co>This backup will be automatically cleaned up after {} more "
+                "backups have been made. If you'd like to preserve it, press</c> "
+                "<cg>Preserve</c><co>.</c>",
+                Mod::get()->getSettingValue<int64_t>("auto-backup-cleanup-limit") - 
+                    static_cast<int64_t>(m_backup->getAutoRemoveOrder().value_or(0))
+            ),
+            "OK", "Preserve",
+            [this](auto, bool btn2) {
+                if (btn2) {
+                    m_backup->preserve();
+				    m_popup->reloadAll();
+                }
+            }
+        );
+    }
+    else {
+        FLAlertLayer::create("Backup Info", content, "OK")->show();
+    }
+}
+void BackupNode::onLevels(CCObject*) {
+    std::string text = "";
+    for (size_t i = 0; i < m_loadedLevelNames.size(); i += 1) {
+        if (i > 10) {
+            text += ", <cj>...</c>";
+            break;
+        }
+        if (i > 0) {
+            text += ", ";
+        }
+        text += fmt::format("<c{}>{}</c>", (i % 2 ? "y" : "o"), m_loadedLevelNames.at(i));
+    }
+    FLAlertLayer::create("Levels in Backup", text, "OK")->show();
 }
 
 BackupNode* BackupNode::create(BackupsPopup* popup, Ref<Backup> backup, float width) {
