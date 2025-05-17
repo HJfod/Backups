@@ -16,6 +16,9 @@ project(Backups VERSION 1.0.0)
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp
     src/ParseCC.cpp
+    src/Backup.cpp
+    src/BackupsPopup.cpp
+    src/SaveToCloud.cpp
 )
 
 if (NOT DEFINED ENV{GEODE_SDK})
