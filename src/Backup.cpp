@@ -150,10 +150,7 @@ Result<> Backup::migrate(std::filesystem::path const& backupsDir, std::filesyste
     return Ok();
 }
 std::pair<size_t, size_t> Backup::migrateAll(std::filesystem::path const& backupsDir, std::filesystem::path const& path) {
-    if (
-        std::filesystem::exists(path / "CCGameManager.dat") || 
-        std::filesystem::exists(path / "CCLocalLevels.dat") 
-    ) {
+    if (Backup::isBackup(path)) {
         if (Backup::migrate(backupsDir, path)) {
             return std::make_pair(1, 0);
         }
@@ -172,6 +169,32 @@ std::pair<size_t, size_t> Backup::migrateAll(std::filesystem::path const& backup
         }
     }
     return std::make_pair(imported, failed);
+}
+
+bool Backup::isBackup(std::filesystem::path const& path) {
+    return 
+        std::filesystem::exists(path / "CCGameManager.dat") || 
+        std::filesystem::exists(path / "CCLocalLevels.dat");
+}
+static void fixNestedBackups2(std::filesystem::path const& backupsDir, std::filesystem::path const& current) {
+    for (auto folder : file::readDirectory(current).unwrapOrDefault()) {
+        if (Backup::isBackup(folder)) {
+            fixNestedBackups2(backupsDir, folder);
+            if (backupsDir != current) {
+                auto res = Backup::migrate(backupsDir, folder);
+                if (res) {
+                    log::info("Fixed nested backup {}", folder);
+                }
+                else {
+                    log::error("Unable to fix nested backup {}: {}", folder, res.unwrapErr());
+                }
+            }
+        }
+    }
+}
+void Backup::fixNestedBackups(std::filesystem::path const& backupsDir) {
+    log::info("Fixing nested backups...");
+    fixNestedBackups2(backupsDir, backupsDir);
 }
 
 std::filesystem::path Backup::getPath() const {

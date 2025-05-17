@@ -68,6 +68,10 @@ class $modify(MenuLayer) {
 		}
 		auto dir = dirs::getSaveDir() / "geode-backups";
 
+		// Restoring a backup in old versions resulted in the new backup being 
+		// nested inside the old one
+		Backup::fixNestedBackups(dir);
+
 		// Backups is sorted from latest to oldest
 		auto backups = Backup::get(dir);
 		if (backups.size() && backups.front()->getTimeSince() < backupRateToHours(backupRate)) {

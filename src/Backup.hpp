@@ -51,6 +51,9 @@ public:
 	static Result<> migrate(std::filesystem::path const& backupsDir, std::filesystem::path const& existingDir);
 	static std::pair<size_t, size_t> migrateAll(std::filesystem::path const& backupsDir, std::filesystem::path const& path);
 
+    static bool isBackup(std::filesystem::path const& dir);
+    static void fixNestedBackups(std::filesystem::path const& backupsDir);
+
 	std::filesystem::path getPath() const;
 	Time getTime() const;
 	std::string getUser() const;
@@ -58,7 +61,7 @@ public:
 	bool hasLocalLevels() const;
 	bool hasGameManager() const;
 	bool isAutoRemove() const;
-    
+
 	Task<BackupInfo> loadInfo();
 	void cancelLoadInfoIfNotComplete();
 
