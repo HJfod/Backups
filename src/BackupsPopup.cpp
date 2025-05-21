@@ -3,10 +3,22 @@
 #include <Geode/binding/ButtonSprite.hpp>
 #include <Geode/modify/AppDelegate.hpp>
 #include <Geode/utils/ranges.hpp>
+#include <Geode/ui/BasedButtonSprite.hpp>
 
 constexpr size_t BACKUPS_PER_PAGE = 10;
 
 static bool DO_NOT_SAVE_GAME = false;
+
+static size_t getFolderSize(std::filesystem::path const& path) {
+    std::error_code ec;
+    size_t size = 0;
+    for (auto file : std::filesystem::recursive_directory_iterator(path, ec)) {
+        if (std::filesystem::is_regular_file(file, ec)) {
+            size += std::filesystem::file_size(file, ec);
+        }
+    }
+    return size;
+}
 
 static void enableButton(CCMenuItemSpriteExtra* btn, bool enabled, bool visualOnly = false) {
     btn->setEnabled(enabled || visualOnly);
@@ -167,7 +179,11 @@ void BackupNode::onLoadInfo(Task<BackupInfo>::Event* event) {
     }
 }
 void BackupNode::onInfo(CCObject*) {
-    auto content = fmt::format("Created on {:%Y/%m/%d}", m_backup->getTime());
+    auto content = fmt::format(
+        "Created on {:%Y/%m/%d}\nFolder name: {}",
+        m_backup->getTime(),
+        m_backup->getPath().filename().string()
+    );
     if (m_backup->isAutoRemove()) {
         createQuickPopup(
             "Backup Info",
@@ -283,7 +299,7 @@ void BackupNode::onDelete(CCObject*) {
 bool BackupsPopup::setup() {
     m_noElasticity = true;
 
-    this->setTitle(fmt::format("Backups for {}", GameManager::get()->m_playerName));
+    this->setTitle(fmt::format("Local Backups for {}", GameManager::get()->m_playerName));
 
     m_list = ScrollLayer::create({ 310, 180 });
     m_list->m_contentLayer->setLayout(
@@ -311,6 +327,15 @@ bool BackupsPopup::setup() {
 
     bottomMenu->setLayout(RowLayout::create()->setDefaultScaleLimits(.1f, .75f));
     m_mainLayer->addChildAtPosition(bottomMenu, Anchor::Bottom, ccp(0, 25));
+
+    auto openDirSpr = CircleButtonSprite::create(
+        CCSprite::createWithSpriteFrameName("folderIcon_001.png")
+    );
+    openDirSpr->setScale(.8f);
+    auto openDirBtn = CCMenuItemSpriteExtra::create(
+        openDirSpr, this, menu_selector(BackupsPopup::onDirectory)
+    );
+    m_buttonMenu->addChildAtPosition(openDirBtn, Anchor::BottomRight);
 
     auto prevPageSpr = CCSprite::createWithSpriteFrameName("GJ_arrow_03_001.png");
     m_prevPageBtn = CCMenuItemSpriteExtra::create(
@@ -388,6 +413,9 @@ void BackupsPopup::onNew(CCObject*) {
 void BackupsPopup::onPage(CCObject* sender) {
     this->gotoPage(m_page + sender->getTag());
 }
+void BackupsPopup::onDirectory(CCObject*) {
+    file::openFolder(Backups::get()->getDirectory());
+}
 
 BackupsPopup* BackupsPopup::create() {
     auto ret = new BackupsPopup();
@@ -443,9 +471,14 @@ void BackupsPopup::gotoPage(size_t page) {
     m_list->m_contentLayer->updateLayout();
     m_list->scrollToTop();
 
+    if (m_backupsDirSizeCache == 0) {
+        m_backupsDirSizeCache = getFolderSize(Backups::get()->getDirectory());
+    }
+
     m_pageLabel->setString(fmt::format(
-        "Page {}/{} ({} backups)",
-        m_page + 1, m_lastPage + 1, backups.size()
+        "Page {}/{} ({} backups, {:.1f} GB)",
+        m_page + 1, m_lastPage + 1, backups.size(),
+        m_backupsDirSizeCache / 1'000'000'000.f
     ).c_str());
 
     enableButton(m_prevPageBtn, m_page > 0);
@@ -453,6 +486,7 @@ void BackupsPopup::gotoPage(size_t page) {
 }
 void BackupsPopup::reloadAll() {
     Backups::get()->invalidateCache();
+    m_backupsDirSizeCache = 0;
     this->gotoPage(0);
 }
 

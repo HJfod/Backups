@@ -1,6 +1,6 @@
 # 2.0.0
  * Option to limit amount of automatic backups
- * Option to pick backup directory
+ * Option to pick backup directory (only on Windows)
  * Backup info is now loaded asynchronously instead of freezing the game
  * Fix backup create times being broken
  * Fix & recover backups getting nested inside other backups and becoming lost

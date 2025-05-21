@@ -82,6 +82,7 @@ private:
 public:
 	static Backups* get();
 
+	std::filesystem::path getDirectory() const;
 	std::pair<size_t, size_t> migrateAllFrom(std::filesystem::path const& path);
 	Result<> createBackup(bool autoRemove);
 	Result<> updateBackupsDirectory(std::filesystem::path const& dir);

@@ -65,6 +65,22 @@ class $modify(MenuLayer) {
 				info->runAction(FollowInAnotherParent::create(btn, ccp(23, 25)));
 				this->addChild(info);
 			}
+			// Don't show this info to new installs
+			Mod::get()->setSavedValue("shown-backups-mod-update-info", true);
+		}
+		// Hacky way to know if the user just installed backups or not
+		else if (!Mod::get()->setSavedValue("shown-backups-mod-update-info", true)) {
+			auto alert = FLAlertLayer::create(
+				"Backups Mod Updated",
+				"Hey! <cy>Backups Mod</c> has been updated. <cj>Automatic backups</c> can now "
+				"be configured to be deleted after a certain amount of backups have been made. "
+				"You should probably go check if you have <co>unnecessary backups</c> taking up "
+				"<co>several gigabytes of space</c>.",
+				"OK"
+			);
+			alert->m_scene = this;
+			alert->m_noElasticity = true;
+			alert->show();
 		}
 
 		auto backupRate = Mod::get()->template getSettingValue<std::string>("auto-local-backup-rate");

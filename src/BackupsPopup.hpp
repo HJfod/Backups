@@ -43,6 +43,7 @@ protected:
 	CCLabelBMFont* m_pageLabel;
 	CCMenuItemSpriteExtra* m_prevPageBtn;
 	CCMenuItemSpriteExtra* m_nextPageBtn;
+	size_t m_backupsDirSizeCache = 0;
 
 	bool setup() override;
 
@@ -51,6 +52,7 @@ protected:
 	void onImport(CCObject*);
 	void onNew(CCObject*);
 	void onPage(CCObject* sender);
+	void onDirectory(CCObject*);
 
 public:
 	static BackupsPopup* create();

@@ -214,12 +214,26 @@ Result<> Backup::deleteBackup() const {
 }
 
 Backups::Backups() {
+    // Android doesn't have the setting
+    // I think the if statement below should work too but this is just to make 
+    // 100% absolutely sure
+#ifdef GEODE_IS_MOBILE
+    m_dir = dirs::getSaveDir() / "geode-backups";
+#else
     m_dir = Mod::get()->template getSettingValue<std::filesystem::path>("backup-directory");
+    if (m_dir.empty()) {
+        m_dir = dirs::getSaveDir() / "geode-backups";
+    }
+#endif
 }
 
 Backups* Backups::get() {
     static auto inst = new Backups();
     return inst;
+}
+
+std::filesystem::path Backups::getDirectory() const {
+    return m_dir;
 }
 
 Result<> Backups::createBackup(bool autoRemove) {
