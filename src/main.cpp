@@ -5,7 +5,6 @@
 #include <Geode/modify/AccountLayer.hpp>
 #include <Geode/ui/Notification.hpp>
 #include <Geode/ui/BasedButtonSprite.hpp>
-#include <Geode/loader/Dirs.hpp>
 
 using namespace geode::prelude;
 
@@ -21,10 +20,8 @@ static std::chrono::hours backupRateToHours(std::string const& rate) {
 }
 
 $execute {
-	// todo: this thing
-	// the current backup directory should prolly be saved in a manager
 	listenForSettingChanges("backup-directory", +[](std::filesystem::path const& dir) {
-		// Backup::migrateAll(dir, )
+		(void)Backups::get()->updateBackupsDirectory(dir);
 	});
 }
 
@@ -74,26 +71,25 @@ class $modify(MenuLayer) {
 		if (backupRate == "Never") {
 			return true;
 		}
-		auto dir = dirs::getSaveDir() / "geode-backups";
 
 		// Restoring a backup in old versions resulted in the new backup being 
 		// nested inside the old one
-		Backup::fixNestedBackups(dir);
+		Backups::get()->fixNestedBackups();
 
 		// Backups is sorted from latest to oldest
-		auto backups = Backup::get(dir);
+		auto backups = Backups::get()->getAllBackups();
 		if (backups.size() && backups.front()->getTimeSince() < backupRateToHours(backupRate)) {
 			return true;
 		}
 
 		// Try cleaning up automated backups. If this fails, not a big deal honestly
-		auto cleanup = Backup::cleanupAutomated(dir);
+		auto cleanup = Backups::get()->cleanupAutomated();
 		if (!cleanup) {
 			log::error("Unable to clean up automated backups: {}", cleanup.unwrapErr());
 		}
 
 		// Create new backup
-		auto res = Backup::create(dir, true);
+		auto res = Backups::get()->createBackup(true);
 		if (res) {
 			log::info("Backed up CCGameManager & CCLocalLevels");
 			Notification::create("Save Data has been Backed Up!", NotificationIcon::Success)->show();
@@ -158,6 +154,6 @@ class $modify(MyAccountLayer, AccountLayer) {
 		}
 	}
 	void onBackups(CCObject*) {
-		BackupsPopup::create(dirs::getSaveDir() / "geode-backups")->show();
+		BackupsPopup::create()->show();
 	}
 };

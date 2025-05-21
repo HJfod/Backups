@@ -32,21 +32,19 @@ public:
 	virtual ~BackupNode();
 };
 
-class BackupsPopup : public Popup<std::filesystem::path const&> {
+class BackupsPopup : public Popup<> {
 protected:
 	using ImportTask = Task<Result<std::filesystem::path>>;
 
-	std::filesystem::path m_dir;
 	ScrollLayer* m_list;
 	size_t m_page = 0;
 	size_t m_lastPage = 0;
-	std::vector<Ref<Backup>> m_backups;
 	EventListener<ImportTask> m_importPick;
 	CCLabelBMFont* m_pageLabel;
 	CCMenuItemSpriteExtra* m_prevPageBtn;
 	CCMenuItemSpriteExtra* m_nextPageBtn;
 
-	bool setup(std::filesystem::path const& dir) override;
+	bool setup() override;
 
 	void onImportPicked(ImportTask::Event* ev);
 
@@ -55,9 +53,7 @@ protected:
 	void onPage(CCObject* sender);
 
 public:
-	static BackupsPopup* create(std::filesystem::path const& dir);
-
-	std::filesystem::path getDir() const;
+	static BackupsPopup* create();
 
 	void gotoPage(size_t page);
 	void reloadAll();

@@ -44,82 +44,6 @@ Backup::Backup(std::filesystem::path const& path) : m_path(path) {
     this->autorelease();
 }
 
-std::vector<Ref<Backup>> Backup::get(std::filesystem::path const& dir) {
-    std::vector<Ref<Backup>> backups;
-    for (auto b : file::readDirectory(dir, false).unwrapOrDefault()) {
-        if (
-            std::filesystem::exists(b / "CCGameManager.dat") || 
-            std::filesystem::exists(b / "CCLocalLevels.dat")
-        ) {
-            backups.push_back(Ref(new Backup(b)));
-        }
-    }
-    std::sort(backups.begin(), backups.end(), [](auto first, auto second) {
-        return first->m_meta.time > second->m_meta.time;
-    });
-
-    // Set auto-remove order after sorting by time
-    size_t autoRemoveOrder = 0;
-    for (auto b : backups) {
-        if (b->m_autoRemoveOrder) {
-            b->m_autoRemoveOrder = autoRemoveOrder;
-            autoRemoveOrder += 1;
-        }
-    }
-    return backups;
-}
-Result<> Backup::cleanupAutomated(std::filesystem::path const& dir) {
-    auto backups = Backup::get(dir);
-    int64_t limit = Mod::get()->getSettingValue<int64_t>("auto-backup-cleanup-limit");
-    for (auto backup : backups) {
-        if (backup->getAutoRemoveOrder() >= limit) {
-            GEODE_UNWRAP(backup->deleteBackup());
-        }
-    }
-    return Ok();
-}
-Result<> Backup::create(std::filesystem::path const& backupsDir, bool autoRemove) {
-    auto time = std::chrono::system_clock::now();
-    std::string dirname;
-    try {
-        // fmt::format uses exceptions :sob:
-        dirname = fmt::format("{:%Y-%m-%d_%H-%M}", time);
-    }
-    catch(...) {
-        dirname = "unktime";
-    }
-
-    std::string findname = dirname;
-    size_t num = 0;
-    while (std::filesystem::exists(backupsDir / findname)) {
-        findname = dirname + "-" + std::to_string(num);
-        num += 1;
-    }
-
-    auto dir = backupsDir / findname;
-    GEODE_UNWRAP(file::createDirectoryAll(dir));
-
-    // Copy CC files
-    std::error_code ec;
-    std::filesystem::copy_file(dirs::getSaveDir() / "CCGameManager.dat", dir / "CCGameManager.dat", ec);
-    std::filesystem::copy_file(dirs::getSaveDir() / "CCLocalLevels.dat", dir / "CCLocalLevels.dat", ec);
-    if (ec) {
-        return Err("Unable to create backup: {} (code {})", ec.message(), ec.value());
-    }
-
-    // Save metadata
-    GEODE_UNWRAP(file::writeToJson(dir / "metadata.json", BackupMetadata(time)));
-
-    if (autoRemove) {
-        // Not a big deal if this fails
-        (void)file::writeString(dir / "auto-remove.txt", fmt::format(
-            "This backup will be removed when your set auto backup limit of {} is reached.\n\nIf you'd like to preserve this backup, delete this text file.",
-            Mod::get()->getSettingValue<int64_t>("auto-backup-cleanup-limit")
-        ));
-    }
-
-    return Ok();
-}
 Result<> Backup::migrate(std::filesystem::path const& backupsDir, std::filesystem::path const& existingDir) {
     GEODE_UNWRAP(file::createDirectoryAll(backupsDir));
 
@@ -156,52 +80,11 @@ Result<> Backup::migrate(std::filesystem::path const& backupsDir, std::filesyste
 
     return Ok();
 }
-std::pair<size_t, size_t> Backup::migrateAll(std::filesystem::path const& backupsDir, std::filesystem::path const& path) {
-    if (Backup::isBackup(path)) {
-        if (Backup::migrate(backupsDir, path)) {
-            return std::make_pair(1, 0);
-        }
-        else {
-            return std::make_pair(0, 1);
-        }
-    }
-
-    size_t imported = 0;
-    size_t failed = 0;
-    for (auto folder : file::readDirectory(path).unwrapOrDefault()) {
-        if (std::filesystem::is_directory(folder)) {
-            auto [i, f] = Backup::migrateAll(backupsDir, folder);
-            imported += i;
-            failed += f;
-        }
-    }
-    return std::make_pair(imported, failed);
-}
 
 bool Backup::isBackup(std::filesystem::path const& path) {
     return 
         std::filesystem::exists(path / "CCGameManager.dat") || 
         std::filesystem::exists(path / "CCLocalLevels.dat");
-}
-static void fixNestedBackups2(std::filesystem::path const& backupsDir, std::filesystem::path const& current) {
-    for (auto folder : file::readDirectory(current).unwrapOrDefault()) {
-        if (Backup::isBackup(folder)) {
-            fixNestedBackups2(backupsDir, folder);
-            if (backupsDir != current) {
-                auto res = Backup::migrate(backupsDir, folder);
-                if (res) {
-                    log::info("Fixed nested backup {}", folder);
-                }
-                else {
-                    log::error("Unable to fix nested backup {}: {}", folder, res.unwrapErr());
-                }
-            }
-        }
-    }
-}
-void Backup::fixNestedBackups(std::filesystem::path const& backupsDir) {
-    log::info("Fixing nested backups...");
-    fixNestedBackups2(backupsDir, backupsDir);
 }
 
 std::filesystem::path Backup::getPath() const {
@@ -328,4 +211,155 @@ Result<> Backup::deleteBackup() const {
         return Err("Unable to delete backup: {} (code {})", ec.message(), ec.value());
     }
     return Ok();
+}
+
+Backups::Backups() {
+    m_dir = Mod::get()->template getSettingValue<std::filesystem::path>("backup-directory");
+}
+
+Backups* Backups::get() {
+    static auto inst = new Backups();
+    return inst;
+}
+
+Result<> Backups::createBackup(bool autoRemove) {
+    auto time = std::chrono::system_clock::now();
+    std::string dirname;
+    try {
+        // fmt::format uses exceptions :sob:
+        dirname = fmt::format("{:%Y-%m-%d_%H-%M}", time);
+    }
+    catch(...) {
+        dirname = "unktime";
+    }
+
+    std::string findname = dirname;
+    size_t num = 0;
+    while (std::filesystem::exists(m_dir / findname)) {
+        findname = dirname + "-" + std::to_string(num);
+        num += 1;
+    }
+
+    auto dir = m_dir / findname;
+    GEODE_UNWRAP(file::createDirectoryAll(dir));
+
+    // Copy CC files
+    std::error_code ec;
+    std::filesystem::copy_file(dirs::getSaveDir() / "CCGameManager.dat", dir / "CCGameManager.dat", ec);
+    std::filesystem::copy_file(dirs::getSaveDir() / "CCLocalLevels.dat", dir / "CCLocalLevels.dat", ec);
+    if (ec) {
+        return Err("Unable to create backup: {} (code {})", ec.message(), ec.value());
+    }
+
+    // Save metadata
+    GEODE_UNWRAP(file::writeToJson(dir / "metadata.json", BackupMetadata(time)));
+
+    if (autoRemove) {
+        // Not a big deal if this fails
+        (void)file::writeString(dir / "auto-remove.txt", fmt::format(
+            "This backup will be removed when your set auto backup limit of {} is reached.\n\nIf you'd like to preserve this backup, delete this text file.",
+            Mod::get()->getSettingValue<int64_t>("auto-backup-cleanup-limit")
+        ));
+    }
+
+    if (m_backupsCache) {
+        m_backupsCache->push_back(new Backup(dir));
+    }
+
+    return Ok();
+}
+std::pair<size_t, size_t> Backups::migrateAllFrom(std::filesystem::path const& path) {
+    if (Backup::isBackup(path)) {
+        if (Backup::migrate(m_dir, path)) {
+            return std::make_pair(1, 0);
+        }
+        else {
+            return std::make_pair(0, 1);
+        }
+    }
+
+    size_t imported = 0;
+    size_t failed = 0;
+    for (auto folder : file::readDirectory(path).unwrapOrDefault()) {
+        if (std::filesystem::is_directory(folder)) {
+            auto [i, f] = this->migrateAllFrom(folder);
+            imported += i;
+            failed += f;
+        }
+    }
+    return std::make_pair(imported, failed);
+}
+Result<> Backups::updateBackupsDirectory(std::filesystem::path const& dir) {
+    if (m_dir != dir) {
+        auto oldDir = m_dir;
+        m_dir = dir;
+        this->migrateAllFrom(oldDir);
+    }
+    return Ok();
+}
+Result<> Backups::cleanupAutomated() {
+    this->getAllBackups();
+    int64_t limit = Mod::get()->getSettingValue<int64_t>("auto-backup-cleanup-limit");
+    for (auto backup : *m_backupsCache) {
+        if (backup->getAutoRemoveOrder() >= limit) {
+            GEODE_UNWRAP(backup->deleteBackup());
+        }
+    }
+    return Ok();
+}
+std::vector<Ref<Backup>> Backups::getAllBackups(bool invalidateCache) {
+    if (invalidateCache) {
+        m_backupsCache = std::nullopt;
+    }
+
+    // Load backups from disk if no cache
+    if (!m_backupsCache) {
+        m_backupsCache.emplace(std::vector<Ref<Backup>>());
+        for (auto b : file::readDirectory(m_dir, false).unwrapOrDefault()) {
+            if (
+                std::filesystem::exists(b / "CCGameManager.dat") || 
+                std::filesystem::exists(b / "CCLocalLevels.dat")
+            ) {
+                m_backupsCache->push_back(Ref(new Backup(b)));
+            }
+        }
+        std::sort(m_backupsCache->begin(), m_backupsCache->end(), [](auto first, auto second) {
+            return first->m_meta.time > second->m_meta.time;
+        });
+
+        // Set auto-remove order after sorting by time
+        size_t autoRemoveOrder = 0;
+        for (auto& b : *m_backupsCache) {
+            if (b->m_autoRemoveOrder) {
+                b->m_autoRemoveOrder = autoRemoveOrder;
+                autoRemoveOrder += 1;
+            }
+        }
+    }
+
+    // This is always true if we are here
+    return *m_backupsCache;
+}
+void Backups::invalidateCache() {
+    m_backupsCache = std::nullopt;
+}
+void Backups::fixNestedBackups(std::filesystem::path const& current) {
+    for (auto folder : file::readDirectory(current).unwrapOrDefault()) {
+        if (Backup::isBackup(folder)) {
+            this->fixNestedBackups(folder);
+            if (m_dir != current) {
+                auto res = Backup::migrate(m_dir, folder);
+                if (res) {
+                    log::info("Fixed nested backup {}", folder);
+                }
+                else {
+                    log::error("Unable to fix nested backup {}: {}", folder, res.unwrapErr());
+                }
+            }
+        }
+    }
+}
+void Backups::fixNestedBackups() {
+    log::info("Fixing nested backups...");
+    this->fixNestedBackups(m_dir);
 }

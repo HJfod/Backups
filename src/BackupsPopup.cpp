@@ -234,7 +234,7 @@ void BackupNode::onRestore(CCObject*) {
 		[self = Ref(this), toggle](auto, bool btn2) {
 			if (btn2) {
 				if (TOGGLED) {
-					auto newRes = Backup::create(self->m_popup->getDir(), false);
+					auto newRes = Backups::get()->createBackup(false);
 					if (!newRes) {
 						return FLAlertLayer::create("Unable to Backup", newRes.unwrapErr(), "OK")->show();
 					}
@@ -280,8 +280,7 @@ void BackupNode::onDelete(CCObject*) {
 	);
 }
 
-bool BackupsPopup::setup(std::filesystem::path const& dir) {
-    m_dir = dir;
+bool BackupsPopup::setup() {
     m_noElasticity = true;
 
     this->setTitle(fmt::format("Backups for {}", GameManager::get()->m_playerName));
@@ -343,7 +342,7 @@ bool BackupsPopup::setup(std::filesystem::path const& dir) {
 void BackupsPopup::onImportPicked(ImportTask::Event* ev) {
     if (auto res = ev->getValue()) {
         if (res->isOk()) {
-            auto [imported, failed] = Backup::migrateAll(m_dir, **res);
+            auto [imported, failed] = Backups::get()->migrateAllFrom(**res);
             FLAlertLayer::create(
                 "Imported backups",
                 failed == 0 ?
@@ -377,7 +376,7 @@ void BackupsPopup::onImport(CCObject*) {
 }
 void BackupsPopup::onNew(CCObject*) {
     // Create new backup
-    auto res = Backup::create(m_dir, false);
+    auto res = Backups::get()->createBackup(false);
     if (res) {
         FLAlertLayer::create("Backed Up", "Backup has been created.", "OK")->show();
     }
@@ -390,9 +389,9 @@ void BackupsPopup::onPage(CCObject* sender) {
     this->gotoPage(m_page + sender->getTag());
 }
 
-BackupsPopup* BackupsPopup::create(std::filesystem::path const& dir) {
+BackupsPopup* BackupsPopup::create() {
     auto ret = new BackupsPopup();
-    if (ret && ret->initAnchored(350, 260, dir, "GJ_square05.png")) {
+    if (ret && ret->initAnchored(350, 260, "GJ_square05.png")) {
         ret->autorelease();
         return ret;
     }
@@ -400,14 +399,11 @@ BackupsPopup* BackupsPopup::create(std::filesystem::path const& dir) {
     return nullptr;
 }
 
-std::filesystem::path BackupsPopup::getDir() const {
-    return m_dir;
-}
-
 void BackupsPopup::gotoPage(size_t page) {
     m_list->m_contentLayer->removeAllChildren();
 
-    if (m_backups.empty()) {
+    auto backups = Backups::get()->getAllBackups();
+    if (backups.empty()) {
         m_page = 0;
         m_lastPage = 0;
         auto node = CCNode::create();
@@ -428,17 +424,17 @@ void BackupsPopup::gotoPage(size_t page) {
     }
     else {
         m_page = page;
-        m_lastPage = (m_backups.size() - 1) / BACKUPS_PER_PAGE;
+        m_lastPage = (backups.size() - 1) / BACKUPS_PER_PAGE;
         if (m_page > m_lastPage) {
             m_page = m_lastPage;
         }
 
         for (
             size_t i = m_page * BACKUPS_PER_PAGE;
-            i < (m_page + 1) * BACKUPS_PER_PAGE && i < m_backups.size();
+            i < (m_page + 1) * BACKUPS_PER_PAGE && i < backups.size();
             i += 1
         ) {
-            auto backup = m_backups.at(i);
+            auto backup = backups.at(i);
             auto node = BackupNode::create(this, backup, m_list->getContentWidth());
             m_list->m_contentLayer->addChild(node);
         }
@@ -449,14 +445,14 @@ void BackupsPopup::gotoPage(size_t page) {
 
     m_pageLabel->setString(fmt::format(
         "Page {}/{} ({} backups)",
-        m_page + 1, m_lastPage + 1, m_backups.size()
+        m_page + 1, m_lastPage + 1, backups.size()
     ).c_str());
 
     enableButton(m_prevPageBtn, m_page > 0);
     enableButton(m_nextPageBtn, m_page < m_lastPage);
 }
 void BackupsPopup::reloadAll() {
-    m_backups = Backup::get(m_dir);
+    Backups::get()->invalidateCache();
     this->gotoPage(0);
 }
 

@@ -8,6 +8,8 @@
 
 using namespace geode::prelude;
 
+class Backups;
+
 using Clock = std::chrono::system_clock;
 using Time = std::chrono::time_point<Clock>;
 
@@ -44,15 +46,12 @@ private:
 
 	Backup(std::filesystem::path const& path);
 
+	friend class Backups;
+
 public:
-	static std::vector<Ref<Backup>> get(std::filesystem::path const& dir);
-	static Result<> cleanupAutomated(std::filesystem::path const& dir);
-	static Result<> create(std::filesystem::path const& backupsDir, bool autoRemove);
 	static Result<> migrate(std::filesystem::path const& backupsDir, std::filesystem::path const& existingDir);
-	static std::pair<size_t, size_t> migrateAll(std::filesystem::path const& backupsDir, std::filesystem::path const& path);
 
     static bool isBackup(std::filesystem::path const& dir);
-    static void fixNestedBackups(std::filesystem::path const& backupsDir);
 
 	std::filesystem::path getPath() const;
 	Time getTime() const;
@@ -70,4 +69,24 @@ public:
 
 	Result<> restoreBackup() const;
 	Result<> deleteBackup() const;
+};
+
+class Backups final {
+private:
+	std::filesystem::path m_dir;
+	std::optional<std::vector<Ref<Backup>>> m_backupsCache;
+
+	Backups();
+    void fixNestedBackups(std::filesystem::path const& current);
+
+public:
+	static Backups* get();
+
+	std::pair<size_t, size_t> migrateAllFrom(std::filesystem::path const& path);
+	Result<> createBackup(bool autoRemove);
+	Result<> updateBackupsDirectory(std::filesystem::path const& dir);
+	Result<> cleanupAutomated();
+	std::vector<Ref<Backup>> getAllBackups(bool invalidateCache = false);
+	void invalidateCache();
+    void fixNestedBackups();
 };
