@@ -37,7 +37,7 @@
 			"name": "Backup Save Directory",
 			"description": "The directory where backups are saved. Changing this will move all of the backups.",
 			"default": "{gd_save_dir}/geode-backups",
-			"platforms": ["win"]
+			"platforms": ["win", "mac"]
 		}
 	},
 	"tags": ["offline", "universal"]
