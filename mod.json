@@ -1,5 +1,5 @@
 {
-	"geode": "4.1.2",
+	"geode": "4.4.0",
 	"gd": {
 		"win": "2.2074",
 		"android": "2.2074",
@@ -8,7 +8,7 @@
 	},
 	"id": "hjfod.backups",
 	"name": "Backups",
-	"version": "1.3.0",
+	"version": "2.0.0",
 	"developer": "HJfod",
 	"description": "Never lose your progress again!",
 	"resources": {
@@ -32,11 +32,12 @@
 			"name": "Auto Backup Limit",
 			"description": "When creating automatic backups, if there are more than this amount of backups, the oldest automated backup will be deleted. <cy>Does not affect manually created backups, and automatic backups can be marked as non-deletable.<c/>"
 		},
-		"ask-for-online-backup-on-exit": {
-			"type": "bool",
-			"default": true,
-			"name": "Ask to Save to Cloud",
-			"description": "If enabled, also uses GD's built-in backup system to ask to <cy>Save to Cloud</c> on game exit."
+		"backup-directory": {
+			"type": "folder",
+			"name": "Backup Save Directory",
+			"description": "The directory where backups are saved. Changing this will move all of the backups.",
+			"default": "{gd_save_dir}/geode-backups",
+			"platforms": ["win"]
 		}
 	},
 	"tags": ["offline", "universal"]
