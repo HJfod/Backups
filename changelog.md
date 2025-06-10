@@ -1,3 +1,6 @@
+# 2.0.1
+ * Performance & stability fixes
+
 # 2.0.0
  * Option to limit amount of automatic backups
  * Option to pick backup directory (only on Windows)

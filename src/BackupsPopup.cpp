@@ -1,13 +1,12 @@
 #include "BackupsPopup.hpp"
+#include <Geode/loader/Mod.hpp>
+#include <Geode/utils/file.hpp>
 #include <Geode/binding/SimplePlayer.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
-#include <Geode/modify/AppDelegate.hpp>
 #include <Geode/utils/ranges.hpp>
 #include <Geode/ui/BasedButtonSprite.hpp>
 
 constexpr size_t BACKUPS_PER_PAGE = 10;
-
-static bool DO_NOT_SAVE_GAME = false;
 
 static size_t getFolderSize(std::filesystem::path const& path) {
     std::error_code ec;
@@ -112,7 +111,6 @@ bool BackupNode::init(BackupsPopup* popup, Ref<Backup> backup, float width) {
     this->addChildAtPosition(menu, Anchor::Right, ccp(-10, 0));
 
     m_infoListener.bind(this, &BackupNode::onLoadInfo);
-    m_infoListener.setFilter(backup->loadInfo());
 
     return true;
 }
@@ -222,6 +220,19 @@ void BackupNode::onLevels(CCObject*) {
     FLAlertLayer::create("Levels in Backup", text, "OK")->show();
 }
 
+void BackupNode::setVisible(bool visible) {
+    CCNode::setVisible(visible);
+    if (m_becameVisible != visible) {
+        m_becameVisible = visible;
+        if (m_becameVisible) {
+            m_infoListener.setFilter(m_backup->loadInfo());
+        }
+        else {
+            m_backup->cancelLoadInfoIfNotComplete();
+        }
+    }
+}
+
 BackupNode* BackupNode::create(BackupsPopup* popup, Ref<Backup> backup, float width) {
     auto ret = new BackupNode();
     if (ret && ret->init(popup, backup, width)) {
@@ -259,8 +270,7 @@ void BackupNode::onRestore(CCObject*) {
 				if (!res) {
 					return FLAlertLayer::create("Unable to Restore", res.unwrapErr(), "OK")->show();
 				}
-				DO_NOT_SAVE_GAME = true;
-				game::restart();
+				game::restart(false);
 			}
 		}
 	);
@@ -489,10 +499,3 @@ void BackupsPopup::reloadAll() {
     m_backupsDirSizeCache = 0;
     this->gotoPage(0);
 }
-
-class $modify(AppDelegate) {
-	void trySaveGame(bool idk) {
-		if (DO_NOT_SAVE_GAME) return;
-		AppDelegate::trySaveGame(idk);
-	}
-};

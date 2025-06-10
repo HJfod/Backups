@@ -16,6 +16,7 @@ protected:
 	LoadingSpinner* m_loadingCircle;
 	EventListener<Task<BackupInfo>> m_infoListener;
     std::vector<std::string> m_loadedLevelNames;
+	bool m_becameVisible = false;
 
 	bool init(BackupsPopup* popup, Ref<Backup> backup, float width);
 
@@ -28,6 +29,8 @@ protected:
 
 public:
 	static BackupNode* create(BackupsPopup* popup, Ref<Backup> backup, float width);
+
+	void setVisible(bool visible) override;
 
 	virtual ~BackupNode();
 };
