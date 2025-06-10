@@ -1,5 +1,6 @@
 # 2.0.1
  * Performance & stability fixes
+ * MacOS / iOS support
 
 # 2.0.0
  * Option to limit amount of automatic backups
