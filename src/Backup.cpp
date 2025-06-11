@@ -277,7 +277,7 @@ Result<> Backups::createBackup(bool autoRemove) {
     }
 
     if (m_backupsCache) {
-        m_backupsCache->push_back(new Backup(dir));
+        m_backupsCache->insert(m_backupsCache->begin(), new Backup(dir));
     }
 
     return Ok();

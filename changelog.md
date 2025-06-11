@@ -1,3 +1,7 @@
+# 2.0.2
+ * Fix new backups being added to the back of the list
+ * Fix backups being created every time the main menu is entered
+
 # 2.0.1
  * Performance & stability fixes
  * MacOS / iOS support
