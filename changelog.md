@@ -1,5 +1,6 @@
 # 2.0.2
  * Fix new backups being added to the back of the list
+ * Fix backups not working on iOS; thank you to [Jasmine](https://github.com/hiimjasmine00)
  * Fix backups being created every time the main menu is entered
 
 # 2.0.1
