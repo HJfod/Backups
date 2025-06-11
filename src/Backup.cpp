@@ -191,12 +191,17 @@ void Backup::cancelLoadInfoIfNotComplete() {
 
 Result<> Backup::restoreBackup() const {
     std::error_code ec;
+    #ifdef GEODE_IS_IOS
+    auto saveDir = dirs::getSaveDir().parent_path();
+    #else
+    auto saveDir = dirs::getSaveDir();
+    #endif
     std::filesystem::copy_file(
-        m_path / "CCGameManager.dat", dirs::getSaveDir() / "CCGameManager.dat",
+        m_path / "CCGameManager.dat", saveDir / "CCGameManager.dat",
         std::filesystem::copy_options::overwrite_existing, ec
     );
     std::filesystem::copy_file(
-        m_path / "CCLocalLevels.dat", dirs::getSaveDir() / "CCLocalLevels.dat",
+        m_path / "CCLocalLevels.dat", saveDir / "CCLocalLevels.dat",
         std::filesystem::copy_options::overwrite_existing, ec
     );
     if (ec) {
@@ -259,8 +264,13 @@ Result<> Backups::createBackup(bool autoRemove) {
 
     // Copy CC files
     std::error_code ec;
-    std::filesystem::copy_file(dirs::getSaveDir() / "CCGameManager.dat", dir / "CCGameManager.dat", ec);
-    std::filesystem::copy_file(dirs::getSaveDir() / "CCLocalLevels.dat", dir / "CCLocalLevels.dat", ec);
+    #ifdef GEODE_IS_IOS
+    auto saveDir = dirs::getSaveDir().parent_path();
+    #else
+    auto saveDir = dirs::getSaveDir();
+    #endif
+    std::filesystem::copy_file(saveDir / "CCGameManager.dat", dir / "CCGameManager.dat", ec);
+    std::filesystem::copy_file(saveDir / "CCLocalLevels.dat", dir / "CCLocalLevels.dat", ec);
     if (ec) {
         return Err("Unable to create backup: {} (code {})", ec.message(), ec.value());
     }
