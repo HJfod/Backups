@@ -110,71 +110,67 @@ bool BackupNode::init(BackupsPopup* popup, Ref<Backup> backup, float width) {
     menu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::End)->setAxisReverse(true));
     this->addChildAtPosition(menu, Anchor::Right, ccp(-10, 0));
 
-    m_infoListener.bind(this, &BackupNode::onLoadInfo);
-
     return true;
 }
 
-void BackupNode::onLoadInfo(Task<BackupInfo>::Event* event) {
-    if (auto info = event->getValue()) {
-        if (m_loadingCircle) {
-            m_loadingCircle->removeFromParent();
-            m_loadingCircle = nullptr;
-        }
-
-        m_loadedLevelNames = info->levels;
-
-        auto icon = SimplePlayer::create(info->playerIcon);
-        icon->setColor(GameManager::get()->colorForIdx(info->playerColor1));
-        icon->setSecondColor(GameManager::get()->colorForIdx(info->playerColor2));
-        if (info->playerGlow) {
-            icon->setGlowOutline(GameManager::get()->colorForIdx(*info->playerGlow));
-        }
-        icon->setScale(.65f);
-        this->addChildAtPosition(icon, Anchor::Left, ccp(20, 5));
-
-        auto agoSpr = CCSprite::createWithSpriteFrameName("GJ_timeIcon_001.png");
-        agoSpr->setScale(.5f);
-        agoSpr->setAnchorPoint({ .0f, .5f });
-        this->addChildAtPosition(agoSpr, Anchor::Left, ccp(45, 10));
-
-        auto starSpr = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
-        starSpr->setScale(.5f);
-        starSpr->setAnchorPoint({ .0f, .5f });
-        this->addChildAtPosition(starSpr, Anchor::Left, ccp(45, -10));
-
-        auto starCount = m_backup->hasGameManager() ? std::to_string(info->starCount) : "N/A";
-        auto starLabel = CCLabelBMFont::create(starCount.c_str(), "bigFont.fnt");
-        starLabel->setScale(.4f);
-        starLabel->setAnchorPoint({ .0f, .5f });
-        this->addChildAtPosition(starLabel, Anchor::Left, ccp(60, -10));
-
-        auto levelSpr = CCSprite::createWithSpriteFrameName("GJ_hammerIcon_001.png");
-        levelSpr->setScale(.5f);
-        levelSpr->setAnchorPoint({ .0f, .5f });
-        this->addChildAtPosition(levelSpr, Anchor::Left, ccp(105, -10));
-
-        auto levelCount = m_backup->hasLocalLevels() ? std::to_string(m_loadedLevelNames.size()) + " levels" : "N/A";
-        auto levelLabel = CCLabelBMFont::create(levelCount.c_str(), "bigFont.fnt");
-        levelLabel->setScale(.4f);
-        levelLabel->setAnchorPoint({ .0f, .5f });
-        this->addChildAtPosition(levelLabel, Anchor::Left, ccp(120, -10));
-
-        auto levelInfoMenu = CCMenu::create();
-        levelInfoMenu->ignoreAnchorPointForPosition(false);
-        levelInfoMenu->setContentSize(ccp(25, 25));
-        
-        auto levelInfoSpr = CCSprite::createWithSpriteFrameName("GJ_infoIcon_001.png");
-        levelInfoSpr->setScale(.5f);
-        auto levelInfoBtn = CCMenuItemSpriteExtra::create(
-            levelInfoSpr, this, menu_selector(BackupNode::onLevels)
-        );
-        levelInfoMenu->addChildAtPosition(levelInfoBtn, Anchor::Center);
-        this->addChildAtPosition(
-            levelInfoMenu, Anchor::Left,
-            ccp(120 + levelLabel->getScaledContentWidth() + 8, -10)
-        );
+void BackupNode::onLoadInfo(BackupInfo info) {
+    if (m_loadingCircle) {
+        m_loadingCircle->removeFromParent();
+        m_loadingCircle = nullptr;
     }
+
+    m_loadedLevelNames = info.levels;
+
+    auto icon = SimplePlayer::create(info.playerIcon);
+    icon->setColor(GameManager::get()->colorForIdx(info.playerColor1));
+    icon->setSecondColor(GameManager::get()->colorForIdx(info.playerColor2));
+    if (info.playerGlow) {
+        icon->setGlowOutline(GameManager::get()->colorForIdx(*info.playerGlow));
+    }
+    icon->setScale(.65f);
+    this->addChildAtPosition(icon, Anchor::Left, ccp(20, 5));
+
+    auto agoSpr = CCSprite::createWithSpriteFrameName("GJ_timeIcon_001.png");
+    agoSpr->setScale(.5f);
+    agoSpr->setAnchorPoint({ .0f, .5f });
+    this->addChildAtPosition(agoSpr, Anchor::Left, ccp(45, 10));
+
+    auto starSpr = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
+    starSpr->setScale(.5f);
+    starSpr->setAnchorPoint({ .0f, .5f });
+    this->addChildAtPosition(starSpr, Anchor::Left, ccp(45, -10));
+
+    auto starCount = m_backup->hasGameManager() ? std::to_string(info.starCount) : "N/A";
+    auto starLabel = CCLabelBMFont::create(starCount.c_str(), "bigFont.fnt");
+    starLabel->setScale(.4f);
+    starLabel->setAnchorPoint({ .0f, .5f });
+    this->addChildAtPosition(starLabel, Anchor::Left, ccp(60, -10));
+
+    auto levelSpr = CCSprite::createWithSpriteFrameName("GJ_hammerIcon_001.png");
+    levelSpr->setScale(.5f);
+    levelSpr->setAnchorPoint({ .0f, .5f });
+    this->addChildAtPosition(levelSpr, Anchor::Left, ccp(105, -10));
+
+    auto levelCount = m_backup->hasLocalLevels() ? std::to_string(m_loadedLevelNames.size()) + " levels" : "N/A";
+    auto levelLabel = CCLabelBMFont::create(levelCount.c_str(), "bigFont.fnt");
+    levelLabel->setScale(.4f);
+    levelLabel->setAnchorPoint({ .0f, .5f });
+    this->addChildAtPosition(levelLabel, Anchor::Left, ccp(120, -10));
+
+    auto levelInfoMenu = CCMenu::create();
+    levelInfoMenu->ignoreAnchorPointForPosition(false);
+    levelInfoMenu->setContentSize(ccp(25, 25));
+    
+    auto levelInfoSpr = CCSprite::createWithSpriteFrameName("GJ_infoIcon_001.png");
+    levelInfoSpr->setScale(.5f);
+    auto levelInfoBtn = CCMenuItemSpriteExtra::create(
+        levelInfoSpr, this, menu_selector(BackupNode::onLevels)
+    );
+    levelInfoMenu->addChildAtPosition(levelInfoBtn, Anchor::Center);
+    this->addChildAtPosition(
+        levelInfoMenu, Anchor::Left,
+        ccp(120 + levelLabel->getScaledContentWidth() + 8, -10)
+    );
 }
 void BackupNode::onInfo(CCObject*) {
     auto content = fmt::format(
@@ -225,10 +221,15 @@ void BackupNode::setVisible(bool visible) {
     if (m_becameVisible != visible) {
         m_becameVisible = visible;
         if (m_becameVisible) {
-            m_infoListener.setFilter(m_backup->loadInfo());
+            m_infoListener.spawn(
+                m_backup->loadInfo(),
+                [this](BackupInfo info) {
+                    this->onLoadInfo(std::move(info));
+                }
+            );
         }
         else {
-            m_backup->cancelLoadInfoIfNotComplete();
+            m_infoListener.cancel();
         }
     }
 }
@@ -241,10 +242,6 @@ BackupNode* BackupNode::create(BackupsPopup* popup, Ref<Backup> backup, float wi
     }
     CC_SAFE_DELETE(ret);
     return nullptr;
-}
-
-BackupNode::~BackupNode() {
-    m_backup->cancelLoadInfoIfNotComplete();
 }
 
 void BackupNode::onRestore(CCObject*) {
@@ -306,7 +303,10 @@ void BackupNode::onDelete(CCObject*) {
 	);
 }
 
-bool BackupsPopup::setup() {
+bool BackupsPopup::init() {
+    if (!Popup::init(350, 260, "GJ_square05.png"))
+        return false;
+    
     m_noElasticity = true;
 
     this->setTitle(fmt::format("Local Backups for {}", GameManager::get()->m_playerName));
@@ -367,32 +367,30 @@ bool BackupsPopup::setup() {
     m_pageLabel->setScale(.3f);
     m_mainLayer->addChildAtPosition(m_pageLabel, Anchor::TopRight, ccp(-10, -5));
 
-    m_importPick.bind(this, &BackupsPopup::onImportPicked);
-
     this->reloadAll();
 
     return true;
 }
 
-void BackupsPopup::onImportPicked(ImportTask::Event* ev) {
-    if (auto res = ev->getValue()) {
-        if (res->isOk()) {
-            auto [imported, failed] = Backups::get()->migrateAllFrom(**res);
-            FLAlertLayer::create(
-                "Imported backups",
-                failed == 0 ?
-                    fmt::format("Imported <cy>{}</c> backups", imported) :
-                    fmt::format(
-                        "Imported <cy>{}</c> backups (<cr>{}</c> failed to import)",
-                        imported, failed
-                    ),
-                "OK"
-            )->show();
-            this->reloadAll();
-        }
-        else {
-            FLAlertLayer::create("Error importing backups", res->unwrapErr(), "OK")->show();
-        }
+void BackupsPopup::onImportPicked(file::PickResult result) {
+    if (result.isOk()) {
+        auto path = std::move(result).unwrap();
+        if (!path) return;
+        auto [imported, failed] = Backups::get()->migrateAllFrom(*path);
+        FLAlertLayer::create(
+            "Imported backups",
+            failed == 0 ?
+                fmt::format("Imported <cy>{}</c> backups", imported) :
+                fmt::format(
+                    "Imported <cy>{}</c> backups (<cr>{}</c> failed to import)",
+                    imported, failed
+                ),
+            "OK"
+        )->show();
+        this->reloadAll();
+    }
+    else {
+        FLAlertLayer::create("Error importing backups", result.unwrapErr(), "OK")->show();
     }
 }
 
@@ -404,7 +402,12 @@ void BackupsPopup::onImport(CCObject*) {
         "Cancel", "Import",
         [popup = Ref(this)](auto, bool btn2) {
             if (btn2) {
-                popup->m_importPick.setFilter(file::pick(file::PickMode::OpenFolder, file::FilePickOptions()));
+                popup->m_importPick.spawn(
+                    file::pick(file::PickMode::OpenFolder, file::FilePickOptions()),
+                    [popup](file::PickResult result) {
+                        popup->onImportPicked(std::move(result));
+                    }
+                );
             }
         }
     );
@@ -429,7 +432,7 @@ void BackupsPopup::onDirectory(CCObject*) {
 
 BackupsPopup* BackupsPopup::create() {
     auto ret = new BackupsPopup();
-    if (ret && ret->initAnchored(350, 260, "GJ_square05.png")) {
+    if (ret && ret->init()) {
         ret->autorelease();
         return ret;
     }

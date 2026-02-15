@@ -120,73 +120,56 @@ void Backup::preserve() {
     }
 }
 
-Task<BackupInfo> Backup::loadInfo() {
-    // Cache info because loading this takes forevah
-    if (m_infoTask) {
-        return *m_infoTask;
+arc::Future<BackupInfo> Backup::loadInfo() {
+    auto info = BackupInfo();
+
+    auto ccgmData = (co_await async::runtime().spawnBlocking<Result<std::string>>([path = m_path] {
+        return cc::parseCompressedCCFile(path / "CCGameManager.dat");
+    })).unwrapOrDefault();
+
+    pugi::xml_document ccgm;
+    if (ccgm.load_buffer(ccgmData.data(), ccgmData.size())) {
+        if (auto find = ccgm.select_single_node(
+            "//k[normalize-space()=\"GS_value\"]/following-sibling::d/k[normalize-space()=\"6\"]/following-sibling::s"
+        )) {
+            info.starCount = find.node().text().as_int();
+        }
+        if (auto find = ccgm.select_single_node(
+            "//k[normalize-space()=\"playerFrame\"]/following-sibling::i"
+        )) {
+            info.playerIcon = find.node().text().as_int();
+        }
+        if (auto find = ccgm.select_single_node(
+            "//k[normalize-space()=\"playerColor\"]/following-sibling::i"
+        )) {
+            info.playerColor1 = find.node().text().as_int();
+        }
+        if (auto find = ccgm.select_single_node(
+            "//k[normalize-space()=\"playerColor2\"]/following-sibling::i"
+        )) {
+            info.playerColor2 = find.node().text().as_int();
+        }
+        if (ccgm.select_single_node(
+            "//k[normalize-space()=\"playerGlow\"]/following-sibling::t"
+        )) {
+            info.playerGlow = true;
+        }
     }
-    m_infoTask.emplace(Task<BackupInfo>::run([path = m_path](auto, auto cancelled) -> Task<BackupInfo>::Result {
-        auto info = BackupInfo();
 
-        auto ccgmData = cc::parseCompressedCCFile(path / "CCGameManager.dat", cancelled).unwrapOrDefault();
+    auto ccllData = (co_await async::runtime().spawnBlocking<Result<std::string>>([path = m_path] {
+        return cc::parseCompressedCCFile(path / "CCLocalLevels.dat");
+    })).unwrapOrDefault();
 
-        if (cancelled()) {
-            return Task<BackupInfo>::Cancel();
+    pugi::xml_document ccll;
+    if (ccll.load_buffer(ccllData.data(), ccllData.size())) {
+        for (auto node : ccll
+            .select_nodes("//k[normalize-space()=\"LLM_01\"]/following-sibling::d/d/k[normalize-space()=\"k2\"]/following-sibling::s[position()=1]")
+        ) {
+            info.levels.push_back(node.node().text().as_string());
         }
-
-        pugi::xml_document ccgm;
-        if (ccgm.load_buffer(ccgmData.data(), ccgmData.size())) {
-            if (auto find = ccgm.select_single_node(
-                "//k[normalize-space()=\"GS_value\"]/following-sibling::d/k[normalize-space()=\"6\"]/following-sibling::s"
-            )) {
-                info.starCount = find.node().text().as_int();
-            }
-            if (auto find = ccgm.select_single_node(
-                "//k[normalize-space()=\"playerFrame\"]/following-sibling::i"
-            )) {
-                info.playerIcon = find.node().text().as_int();
-            }
-            if (auto find = ccgm.select_single_node(
-                "//k[normalize-space()=\"playerColor\"]/following-sibling::i"
-            )) {
-                info.playerColor1 = find.node().text().as_int();
-            }
-            if (auto find = ccgm.select_single_node(
-                "//k[normalize-space()=\"playerColor2\"]/following-sibling::i"
-            )) {
-                info.playerColor2 = find.node().text().as_int();
-            }
-            if (ccgm.select_single_node(
-                "//k[normalize-space()=\"playerGlow\"]/following-sibling::t"
-            )) {
-                info.playerGlow = true;
-            }
-        }
-
-        auto ccllData = cc::parseCompressedCCFile(path / "CCLocalLevels.dat", cancelled).unwrapOrDefault();
-
-        if (cancelled()) {
-            return Task<BackupInfo>::Cancel();
-        }
-
-        pugi::xml_document ccll;
-        if (ccll.load_buffer(ccllData.data(), ccllData.size())) {
-            for (auto node : ccll
-                .select_nodes("//k[normalize-space()=\"LLM_01\"]/following-sibling::d/d/k[normalize-space()=\"k2\"]/following-sibling::s[position()=1]")
-            ) {
-                info.levels.push_back(node.node().text().as_string());
-            }
-        }
-
-        return info;
-    }));
-    return *m_infoTask;
-}
-void Backup::cancelLoadInfoIfNotComplete() {
-    if (m_infoTask && !m_infoTask->isFinished()) {
-        m_infoTask->cancel();
-        m_infoTask = std::nullopt;
     }
+
+    co_return info;
 }
 
 Result<> Backup::restoreBackup() const {

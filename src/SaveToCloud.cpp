@@ -5,9 +5,12 @@
 
 using namespace geode::prelude;
 
-class SaveToCloudPopup : public Popup<>, public GJAccountBackupDelegate {
+class SaveToCloudPopup : public Popup, public GJAccountBackupDelegate {
 protected:
-	bool setup() override {
+	bool init() {
+		if (!Popup::init(250, 200, "square01_001.png"))
+			return false;
+		
 		this->setTitle("Saving to Cloud...");
 		GJAccountManager::get()->m_backupDelegate = this;
 		// if (!GJAccountManager::get()->getAccountBackupURL()) {
@@ -18,7 +21,7 @@ protected:
 public:
 	static SaveToCloudPopup* create() {
 		auto ret = new SaveToCloudPopup();
-		if (ret && ret->initAnchored(250, 200, "square01_001.png")) {
+		if (ret && ret->init()) {
 			ret->autorelease();
 			return ret;
 		}

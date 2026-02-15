@@ -1,3 +1,6 @@
+# 2.1.0
+ * Support for 2.2081
+
 # 2.0.2
  * Fix new backups being added to the back of the list
  * Fix backups not working on iOS; thank you to [Jasmine](https://github.com/hiimjasmine00)

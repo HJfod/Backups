@@ -2,9 +2,9 @@
 
 #include <Geode/DefaultInclude.hpp>
 #include <Geode/binding/GameManager.hpp>
-#include <Geode/utils/Task.hpp>
 #include <Geode/utils/cocos.hpp>
 #include <matjson.hpp>
+#include <Geode/utils/async.hpp>
 
 using namespace geode::prelude;
 
@@ -42,7 +42,6 @@ private:
 	std::filesystem::path m_path;
 	BackupMetadata m_meta;
 	std::optional<size_t> m_autoRemoveOrder;
-	std::optional<Task<BackupInfo>> m_infoTask;
 
 	Backup(std::filesystem::path const& path);
 
@@ -64,8 +63,7 @@ public:
 	std::optional<size_t> getAutoRemoveOrder() const;
 	void preserve();
 
-	Task<BackupInfo> loadInfo();
-	void cancelLoadInfoIfNotComplete();
+	arc::Future<BackupInfo> loadInfo();
 
 	Result<> restoreBackup() const;
 	Result<> deleteBackup() const;

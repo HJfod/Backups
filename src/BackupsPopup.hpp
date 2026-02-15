@@ -3,6 +3,7 @@
 #include <Geode/ui/Popup.hpp>
 #include <Geode/ui/LoadingSpinner.hpp>
 #include <Geode/ui/ScrollLayer.hpp>
+#include <Geode/utils/file.hpp>
 #include "Backup.hpp"
 
 using namespace geode::prelude;
@@ -14,13 +15,13 @@ protected:
 	BackupsPopup* m_popup;
 	Ref<Backup> m_backup;
 	LoadingSpinner* m_loadingCircle;
-	EventListener<Task<BackupInfo>> m_infoListener;
+	async::TaskHolder<BackupInfo> m_infoListener;
     std::vector<std::string> m_loadedLevelNames;
 	bool m_becameVisible = false;
 
 	bool init(BackupsPopup* popup, Ref<Backup> backup, float width);
 
-	void onLoadInfo(Task<BackupInfo>::Event* event);
+	void onLoadInfo(BackupInfo event);
     void onInfo(CCObject*);
     void onLevels(CCObject*);
 
@@ -31,26 +32,22 @@ public:
 	static BackupNode* create(BackupsPopup* popup, Ref<Backup> backup, float width);
 
 	void setVisible(bool visible) override;
-
-	virtual ~BackupNode();
 };
 
-class BackupsPopup : public Popup<> {
+class BackupsPopup : public Popup {
 protected:
-	using ImportTask = Task<Result<std::filesystem::path>>;
-
 	ScrollLayer* m_list;
 	size_t m_page = 0;
 	size_t m_lastPage = 0;
-	EventListener<ImportTask> m_importPick;
+	async::TaskHolder<file::PickResult> m_importPick;
 	CCLabelBMFont* m_pageLabel;
 	CCMenuItemSpriteExtra* m_prevPageBtn;
 	CCMenuItemSpriteExtra* m_nextPageBtn;
 	size_t m_backupsDirSizeCache = 0;
 
-	bool setup() override;
+	bool init();
 
-	void onImportPicked(ImportTask::Event* ev);
+	void onImportPicked(file::PickResult result);
 
 	void onImport(CCObject*);
 	void onNew(CCObject*);

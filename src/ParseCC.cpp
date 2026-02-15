@@ -2,16 +2,14 @@
 #include <Geode/utils/file.hpp>
 #include <Geode/utils/cocos.hpp>
 #include <cppcodec/base64_url.hpp>
+#include <arc/task/Yield.hpp>
 
 using namespace geode::prelude;
 
-Result<std::string> cc::parseCompressedCCFile(std::filesystem::path const& path, std::function<bool()> cancelled) {
+Result<std::string> cc::parseCompressedCCFile(std::filesystem::path const& path) {
     auto readRes = file::readBinary(path);
     if (!readRes) {
         return Err("Unable to read file: {}", readRes.unwrapErr());
-    }
-    if (cancelled()) {
-        return Ok("");
     }
     auto data = *readRes;
     return Ok(ZipUtils::decompressString2(data.data(), true, data.size(), 11));

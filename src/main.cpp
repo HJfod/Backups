@@ -20,7 +20,7 @@ static std::chrono::hours backupRateToHours(std::string const& rate) {
 }
 
 $execute {
-	listenForSettingChanges("backup-directory", +[](std::filesystem::path const& dir) {
+	listenForSettingChanges<std::filesystem::path>("backup-directory", +[](std::filesystem::path dir) {
 		(void)Backups::get()->updateBackupsDirectory(dir);
 	});
 }
