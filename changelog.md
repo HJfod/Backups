@@ -1,3 +1,6 @@
+# 2.1.1
+ * Fix crash on mobile when trying to view backups (sorry for taking so long on fixing this!)
+
 # 2.1.0
  * Support for 2.2081
 

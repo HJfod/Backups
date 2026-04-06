@@ -1,11 +1,15 @@
+#include <pugixml.hpp>
 #include "Backup.hpp"
 #include "ParseCC.hpp"
 #include <Geode/utils/JsonValidation.hpp>
 #include <Geode/utils/file.hpp>
 #include <matjson/std.hpp>
-#include <pugixml.hpp>
 #include <Geode/loader/Dirs.hpp>
 #include <Geode/loader/Mod.hpp>
+
+// Thanks Globed devs
+// this is to ensure we are using pugixml v1.15 or whatever
+static_assert(std::is_trivially_destructible_v<pugi::xml_node>);
 
 matjson::Value matjson::Serialize<BackupMetadata>::toJson(BackupMetadata const& info) {
     return matjson::makeObject({
